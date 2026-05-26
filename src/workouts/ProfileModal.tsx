@@ -43,10 +43,20 @@ export default function ProfileModal({ isOpen, onClose }: Props) {
     }
   }
 
+  const saveButton = (
+    <button
+      onClick={handleSave}
+      disabled={saving || bodyweight < 30}
+      className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-semibold text-sm disabled:opacity-50 active:bg-blue-700"
+    >
+      {saving ? 'Saving...' : 'Save Profile'}
+    </button>
+  )
+
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Strength Profile">
+    <Modal isOpen={isOpen} onClose={onClose} title="Strength Profile" footer={loaded ? saveButton : undefined}>
       {loaded && (
-        <div className="space-y-5 pb-2">
+        <div className="space-y-5">
           <div className="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/30 rounded-2xl p-4">
             <Shield size={16} className="text-blue-500 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
@@ -100,14 +110,6 @@ export default function ProfileModal({ isOpen, onClose }: Props) {
               </button>
             </div>
           </div>
-
-          <button
-            onClick={handleSave}
-            disabled={saving || bodyweight < 30}
-            className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-semibold text-sm disabled:opacity-50 active:bg-blue-700"
-          >
-            {saving ? 'Saving...' : 'Save Profile'}
-          </button>
         </div>
       )}
     </Modal>

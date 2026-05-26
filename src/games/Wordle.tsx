@@ -244,7 +244,7 @@ export default function Wordle({ onBack }: Props) {
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-between py-4 px-4 overflow-hidden">
+      <div className="flex-1 flex flex-col items-center justify-between pt-4 pb-tab-bar px-4 overflow-hidden">
         {/* Grid */}
         <div className="flex flex-col gap-1.5 w-full max-w-xs">
           {rows.map((row, ri) => (

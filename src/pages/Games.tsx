@@ -205,6 +205,197 @@ const SVG_ILLUSTRATIONS: Record<TwoPlayerGameId, React.ComponentType> = {
   airhockey: AirHockeySvg, flappyjump: FlappyJumpSvg,
 }
 
+// ─── Solo SVG Illustrations ───────────────────────────────────────────────────
+function Game2048Svg() {
+  const tiles = [[2,4,8,16],[32,0,128,256],[0,512,0,1024],[0,0,0,2048]]
+  const color = (v: number) => v===2048?'#edcf72':v>=512?'#edcc61':v>=128?'#e9c46a':v>=32?'#f4a261':v>=8?'#e76f51':v>0?'#9c6b4e':'rgba(255,255,255,0.05)'
+  const textColor = (v: number) => v >= 8 ? '#fff' : v > 0 ? '#776e65' : 'transparent'
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#g2048bg)" />
+      <defs>
+        <linearGradient id="g2048bg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1a1a2e" /><stop offset="1" stopColor="#0d0d1f" />
+        </linearGradient>
+      </defs>
+      {tiles.map((row, ri) => row.map((v, ci) => (
+        <g key={`${ri}-${ci}`}>
+          <rect x={14 + ci*44} y={12 + ri*34} width={40} height={30} rx={5} fill={color(v)} />
+          {v > 0 && <text x={14 + ci*44 + 20} y={12 + ri*34 + 19} textAnchor="middle" dominantBaseline="middle"
+            fontFamily="Inter,sans-serif" fontSize={v >= 1024 ? 8 : v >= 128 ? 10 : 12} fontWeight="800" fill={textColor(v)}>
+            {v}
+          </text>}
+        </g>
+      )))}
+    </svg>
+  )
+}
+
+function SnakeSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#snakeBg)" />
+      <defs>
+        <linearGradient id="snakeBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0a1f0a" /><stop offset="1" stopColor="#050f05" />
+        </linearGradient>
+      </defs>
+      {/* Grid dots */}
+      {Array.from({length:6},(_,r)=>Array.from({length:8},(_,c)=>(
+        <circle key={`${r}-${c}`} cx={18+c*24} cy={18+r*24} r={1.5} fill="rgba(255,255,255,0.06)" />
+      )))}
+      {/* Snake body - S shape */}
+      {[[22,30],[46,30],[70,30],[94,30],[118,30],[118,54],[118,78],[94,78],[70,78],[46,78],[46,102],[70,102],[94,102],[118,102],[142,102]].map(([x,y],i)=>(
+        <rect key={i} x={x-10} y={y-10} width={20} height={20} rx={5}
+          fill={i===0?'#22c55e':'#16a34a'} opacity={i===0?1:0.85} />
+      ))}
+      {/* Apple */}
+      <circle cx="162" cy="102" r="12" fill="#ef4444" />
+      <rect x="161" y="88" width="3" height="8" rx="1.5" fill="#15803d" />
+      {/* Eyes on head */}
+      <circle cx="17" cy="26" r="3" fill="white" /><circle cx="18" cy="26" r="1.5" fill="#111" />
+      <circle cx="27" cy="26" r="3" fill="white" /><circle cx="28" cy="26" r="1.5" fill="#111" />
+    </svg>
+  )
+}
+
+function MemoryMatchSvg() {
+  const cards = [
+    {x:14,y:14,flip:true,sym:'⭐'},{x:60,y:14,flip:false,sym:''},{x:106,y:14,flip:true,sym:'🔥'},{x:152,y:14,flip:false,sym:''},
+    {x:14,y:66,flip:false,sym:''},{x:60,y:66,flip:true,sym:'⭐'},{x:106,y:66,flip:false,sym:''},{x:152,y:66,flip:true,sym:'🔥'},
+    {x:14,y:118,flip:false,sym:''},{x:60,y:118,flip:false,sym:''},{x:106,y:118,flip:false,sym:''},{x:152,y:118,flip:false,sym:''},
+  ]
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#memBg)" />
+      <defs>
+        <linearGradient id="memBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1e1b4b" /><stop offset="1" stopColor="#0f0e26" />
+        </linearGradient>
+      </defs>
+      {cards.map((c,i)=>(
+        <g key={i}>
+          <rect x={c.x} y={c.y} width={36} height={34} rx={6}
+            fill={c.flip?'rgba(59,130,246,0.25)':'rgba(255,255,255,0.07)'}
+            stroke={c.flip?'rgba(59,130,246,0.6)':'rgba(255,255,255,0.12)'} strokeWidth="1.5" />
+          {c.flip&&<text x={c.x+18} y={c.y+21} textAnchor="middle" dominantBaseline="middle" fontSize="18">{c.sym}</text>}
+          {!c.flip&&<>
+            <line x1={c.x+8} y1={c.y+10} x2={c.x+28} y2={c.y+10} stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
+            <line x1={c.x+8} y1={c.y+17} x2={c.x+28} y2={c.y+17} stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
+            <line x1={c.x+8} y1={c.y+24} x2={c.x+22} y2={c.y+24} stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
+          </>}
+        </g>
+      ))}
+    </svg>
+  )
+}
+
+function WordleSvg() {
+  const rows = [
+    [{l:'S',s:'correct'},{l:'T',s:'absent'},{l:'A',s:'present'},{l:'R',s:'correct'},{l:'E',s:'absent'}],
+    [{l:'S',s:'correct'},{l:'H',s:'absent'},{l:'A',s:'present'},{l:'R',s:'correct'},{l:'P',s:'correct'}],
+    [{l:'',s:'empty'},{l:'',s:'empty'},{l:'',s:'empty'},{l:'',s:'empty'},{l:'',s:'empty'}],
+  ]
+  const bg = (s:string)=>s==='correct'?'#538d4e':s==='present'?'#b59f3b':s==='absent'?'#3a3a3c':'rgba(255,255,255,0.06)'
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="#1a1a1e" />
+      {rows.map((row,ri)=>row.map((cell,ci)=>(
+        <g key={`${ri}-${ci}`}>
+          <rect x={16+ci*36} y={16+ri*44} width={32} height={38} rx={5} fill={bg(cell.s)} stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+          {cell.l&&<text x={16+ci*36+16} y={16+ri*44+22} textAnchor="middle" dominantBaseline="middle"
+            fontFamily="Inter,sans-serif" fontSize="16" fontWeight="800" fill="white">{cell.l}</text>}
+        </g>
+      )))}
+      {/* Keyboard hint */}
+      {['Q','W','E','R','T','Y','U','I','O','P'].map((k,i)=>(
+        <rect key={k} x={16+i*18} y={152} width={14} height={10} rx={2} fill="rgba(255,255,255,0.08)" />
+      ))}
+    </svg>
+  )
+}
+
+function WhackAMoleSvg() {
+  const holes = [{x:38,y:60},{x:100,y:48},{x:162,y:60},{x:38,y:110},{x:100,y:98},{x:162,y:110}]
+  const moles = [0,2,4]
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#moleBg)" />
+      <defs>
+        <linearGradient id="moleBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#14532d" /><stop offset="1" stopColor="#052e16" />
+        </linearGradient>
+      </defs>
+      {/* Ground patches */}
+      {holes.map((h,i)=>(
+        <ellipse key={i} cx={h.x} cy={h.y+16} rx={24} ry={10} fill="rgba(0,0,0,0.4)" />
+      ))}
+      {/* Holes */}
+      {holes.map((h,i)=>(
+        <ellipse key={i} cx={h.x} cy={h.y+12} rx={20} ry={8} fill="#0a1f0a" />
+      ))}
+      {/* Moles */}
+      {moles.map(idx=>{
+        const h=holes[idx]
+        return (
+          <g key={idx}>
+            <ellipse cx={h.x} cy={h.y+4} rx={18} ry={16} fill="#92400e" />
+            <ellipse cx={h.x} cy={h.y-4} rx={14} ry={14} fill="#b45309" />
+            {/* Eyes */}
+            <circle cx={h.x-5} cy={h.y-7} r={3} fill="white" /><circle cx={h.x-4} cy={h.y-7} r={1.5} fill="#111" />
+            <circle cx={h.x+5} cy={h.y-7} r={3} fill="white" /><circle cx={h.x+6} cy={h.y-7} r={1.5} fill="#111" />
+            {/* Nose */}
+            <ellipse cx={h.x} cy={h.y-2} rx={4} ry={3} fill="#7c2d12" />
+          </g>
+        )
+      })}
+      {/* Mallet */}
+      <line x1="155" y1="20" x2="130" y2="55" stroke="#92400e" strokeWidth="5" strokeLinecap="round" />
+      <rect x="140" y="12" width="28" height="20" rx="5" fill="#d97706" transform="rotate(-35 154 22)" />
+    </svg>
+  )
+}
+
+const SOLO_SVG_ILLUSTRATIONS: Record<SoloGameId, React.ComponentType> = {
+  '2048': Game2048Svg, snake: SnakeSvg, memory: MemoryMatchSvg,
+  wordle: WordleSvg, mole: WhackAMoleSvg,
+}
+
+// ─── Solo Game Card ───────────────────────────────────────────────────────────
+function SoloCard({ def, score, onTap, index }: {
+  def: typeof SOLO_DEFS[0]; score?: number; onTap: () => void; index: number
+}) {
+  const Illustration = SOLO_SVG_ILLUSTRATIONS[def.id]
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.07 }}
+      whileTap={{ scale: 0.96 }}
+      onClick={onTap}
+      className="w-full rounded-2xl overflow-hidden text-left flex flex-col"
+      style={{ border: '3px solid rgba(255,255,255,0.09)', background: 'var(--loft-card)', boxShadow: '0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)' }}
+    >
+      <div className="flex-1" style={{ aspectRatio: '1 / 0.76' }}>
+        <Illustration />
+      </div>
+      <div className="px-3 py-2.5" style={{ background: 'rgba(0,0,0,0.35)' }}>
+        <div className="flex items-center gap-2">
+          <span className="text-base">{def.emoji}</span>
+          <span className="font-bold text-sm truncate" style={{ color: 'var(--loft-text)' }}>{def.name}</span>
+        </div>
+        {(score ?? 0) > 0 && (
+          <div className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5"
+            style={{ background: 'rgba(59,158,255,0.12)' }}>
+            <span className="text-xs font-semibold" style={{ color: 'var(--loft-accent)' }}>
+              Best: {score!.toLocaleString()}
+            </span>
+          </div>
+        )}
+      </div>
+    </motion.button>
+  )
+}
+
 // ─── Game Card ────────────────────────────────────────────────────────────────
 function TwoPlayerCard({ def, onTap, index }: {
   def: typeof TWO_PLAYER_DEFS[0]; onTap: () => void; index: number
@@ -752,6 +943,23 @@ export default function Games() {
             <span className="text-xl">🎮</span>
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: 'var(--loft-text)' }}>Games</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => setShowStats(true)} className="flex flex-col items-center gap-0.5">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm"
+                style={{ background: 'rgba(239,68,68,0.15)', border: '2px solid #ef4444', color: '#ef4444' }}>
+                {p1Wins}
+              </div>
+              <span className="text-xs" style={{ color: 'rgba(239,68,68,0.55)' }}>P1</span>
+            </button>
+            <div className="w-px h-8 mx-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+            <button onClick={() => setShowStats(true)} className="flex flex-col items-center gap-0.5">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center font-black text-sm"
+                style={{ background: 'rgba(59,130,246,0.15)', border: '2px solid #3b82f6', color: '#3b82f6' }}>
+                {p2Wins}
+              </div>
+              <span className="text-xs" style={{ color: 'rgba(59,130,246,0.55)' }}>P2</span>
+            </button>
+          </div>
         </div>
 
         {/* Segmented toggle */}
@@ -773,8 +981,7 @@ export default function Games() {
       </div>
 
       {/* Scroll content */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-area px-4 pt-4"
-        style={{ paddingBottom: '88px' }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-area px-4 pt-4 pb-tab-bar">
         {/* 2P section */}
         <div ref={twoPRef}>
           <div className="flex items-center gap-2 mb-3">
@@ -783,6 +990,16 @@ export default function Games() {
               <span className="text-xs font-black tracking-widest" style={{ color: 'var(--loft-accent)' }}>2 PLAYER GAMES</span>
             </div>
           </div>
+
+          {/* Tournament banner */}
+          <button onClick={() => setView({ type: 'tournament-setup' })}
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-black text-sm mb-4"
+            style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', color: '#fff', boxShadow: '0 0 20px rgba(22,163,74,0.35)' }}>
+            <Trophy size={15} />
+            PLAY TOURNAMENT
+            <Trophy size={15} />
+          </button>
+
           <div className="grid grid-cols-2 gap-3 mb-8">
             {TWO_PLAYER_DEFS.map((def, i) => (
               <TwoPlayerCard key={def.id} def={def} index={i}
@@ -801,62 +1018,12 @@ export default function Games() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             {SOLO_DEFS.map((game, i) => (
-              <motion.div key={game.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.06 }}
-                className={game.id === 'mole' ? 'col-span-2' : ''}>
-                <button
-                  onClick={() => setView({ type: 'solo', gameId: game.id })}
-                  className="w-full rounded-2xl border p-4 text-left active:scale-[0.97] transition-all"
-                  style={{ background: 'var(--loft-card)', borderColor: 'rgba(255,255,255,0.07)' }}>
-                  <span className="text-3xl">{game.emoji}</span>
-                  <h3 className="font-bold mt-2 text-base" style={{ color: 'var(--loft-text)' }}>{game.name}</h3>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--loft-muted)' }}>{game.tagline}</p>
-                  {soloScores[game.id]?.bestScore > 0 && (
-                    <div className="mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1"
-                      style={{ background: 'rgba(59,158,255,0.1)' }}>
-                      <span className="text-xs font-semibold" style={{ color: 'var(--loft-accent)' }}>
-                        Best: {soloScores[game.id].bestScore.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </button>
-              </motion.div>
+              <SoloCard key={game.id} def={game} index={i}
+                score={soloScores[game.id]?.bestScore}
+                onTap={() => setView({ type: 'solo', gameId: game.id })} />
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Tournament footer */}
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
-        style={{ background: 'var(--loft-bg2)', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-        {/* P1 wins */}
-        <button onClick={() => setShowStats(true)}
-          className="flex flex-col items-center gap-0.5 w-14">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-xl"
-            style={{ background: 'rgba(239,68,68,0.15)', border: '2.5px solid #ef4444', color: '#ef4444' }}>
-            {p1Wins}
-          </div>
-          <span className="text-xs" style={{ color: 'rgba(239,68,68,0.6)' }}>P1</span>
-        </button>
-
-        {/* Play Tournament button */}
-        <button onClick={() => setView({ type: 'tournament-setup' })}
-          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-black text-sm"
-          style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', color: '#fff', boxShadow: '0 0 20px rgba(22,163,74,0.35)' }}>
-          <Trophy size={16} />
-          PLAY TOURNAMENT
-          <Trophy size={16} />
-        </button>
-
-        {/* P2 wins */}
-        <button onClick={() => setShowStats(true)}
-          className="flex flex-col items-center gap-0.5 w-14">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-xl"
-            style={{ background: 'rgba(59,130,246,0.15)', border: '2.5px solid #3b82f6', color: '#3b82f6' }}>
-            {p2Wins}
-          </div>
-          <span className="text-xs" style={{ color: 'rgba(59,130,246,0.6)' }}>P2</span>
-        </button>
       </div>
 
       {/* Overlay views */}
