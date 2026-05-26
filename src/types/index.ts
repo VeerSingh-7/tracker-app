@@ -1,0 +1,156 @@
+export interface WorkoutExercise {
+  name: string
+  sets: number
+  reps: number
+  weight: number
+}
+
+export interface ExerciseSet {
+  weight: number
+  reps: number
+  completed: boolean
+  xpAwarded?: boolean
+}
+
+export interface WorkoutExerciseDetailed {
+  exerciseId: string
+  exerciseName: string
+  sets: ExerciseSet[]
+}
+
+export interface Workout {
+  id: string
+  date: string
+  type: 'cardio' | 'strength' | 'other'
+  duration: number
+  notes: string
+  exercises: WorkoutExercise[]
+  detailedExercises?: WorkoutExerciseDetailed[]
+  xpEarned?: number
+  totalVolume?: number
+}
+
+export interface Exercise {
+  id: string
+  name: string
+  category: string
+  primaryMuscles: string[]
+  secondaryMuscles: string[]
+  equipment: string
+  instructions: string
+  isCustom: boolean
+}
+
+export interface PersonalRecord {
+  exerciseId: string
+  exerciseName: string
+  weight: number
+  reps: number
+  date: string
+  est1RM: number
+  rank?: string
+  lp?: number
+}
+
+export interface UserProfile {
+  id: 'main'
+  gender: 'male' | 'female'
+  bodyweightKg: number
+  updatedAt: string
+}
+
+export interface UserProgress {
+  id: 'main'
+  level: number
+  xp: number
+  totalXP: number
+  coins: number
+  currentStreak: number
+  longestStreak: number
+  dailyQuestId: string | null
+  dailyQuestDate: string | null
+  completedQuests: string[]
+  achievements: string[]
+  unlockedCosmetics: string[]
+  activeTheme: string
+}
+
+export interface Achievement {
+  id: string
+  name: string
+  description: string
+  icon: string
+  conditionDescription: string
+  xpReward: number
+}
+
+export interface DailyQuest {
+  id: string
+  name: string
+  description: string
+  type: 'sets' | 'muscle' | 'pr' | 'workout' | 'volume' | 'cardio'
+  target?: number
+  targetMuscle?: string
+  xpReward: number
+  coinReward: number
+}
+
+export interface ShopItem {
+  id: string
+  name: string
+  description: string
+  category: 'theme' | 'icon' | 'frame'
+  price: number
+  preview: string
+}
+
+export interface SpendingEntry {
+  id: string
+  date: string
+  amount: number
+  category: 'food' | 'transport' | 'bills' | 'fun' | 'other'
+  note: string
+}
+
+export interface IncomeEntry {
+  id: string
+  date: string
+  amount: number
+  source: 'work' | 'freelance' | 'gift' | 'other'
+  note: string
+}
+
+export interface GameScore {
+  gameId: string
+  bestScore: number
+  lastPlayed: string
+  extra?: Record<string, unknown>
+}
+
+export interface RoutineExercise {
+  exerciseId: string
+  exerciseName: string
+  sets: number
+  targetReps?: number
+  targetWeight?: number
+}
+
+export interface Routine {
+  id: string
+  name: string
+  exercises: RoutineExercise[]
+  createdAt: string
+}
+
+export interface TournamentRecord {
+  id: string
+  date: string
+  mode: '2p' | 'ai'
+  difficulty?: 'easy' | 'medium' | 'hard'
+  games: string[]
+  scores: Record<string, { p1: number; p2: number }>
+  winner: 'p1' | 'p2' | 'draw'
+}
+
+export type Tab = 'dashboard' | 'workouts' | 'money' | 'games'
+export type WorkoutSubTab = 'tracker' | 'library' | 'progress' | 'bodygraph' | 'achievements' | 'quest' | 'history' | 'shop'

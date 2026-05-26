@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -fsSL https://fnm.vercel.app/install)",
+      "Bash(bash)",
+      "Read(//home/veer_singh/.local/share/**)",
+      "Read(//home/veer_singh/**)",
+      "Bash(cp -r /home/veer_singh/tracker-app/tracker-temp/. /home/veer_singh/tracker-app/)",
+      "Bash(rm -rf /home/veer_singh/tracker-app/tracker-temp)",
+      "Bash(python3 -)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(npx vite *)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\" http://localhost:5200/)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\" http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(curl -s http://localhost:5173/ -o /dev/null -w \"%{http_code}\")",
+      "Bash(npx eslint *)",
+      "Bash(pkill -f \"vite --port 5173\")",
+      "Bash(curl -s http://localhost:5173/ -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:5173/ -o /dev/null -w \"HTTP %{http_code}\\\\n\")",
+      "Bash(git stash *)",
+      "Bash(node *)",
+      "Bash(fuser -k 5173/tcp)",
+      "Bash(gh --version)",
+      "Bash(sudo dpkg --configure -a)",
+      "Bash(sudo apt install gh -y)",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(git branch *)",
+      "Bash(git add *)"
+    ]
+  }
+}

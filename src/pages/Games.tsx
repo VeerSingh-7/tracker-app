@@ -1,0 +1,900 @@
+import { useEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ChevronLeft, Trophy, Users, User, CheckSquare, Square } from 'lucide-react'
+import { getAllGameScores, getAllTournaments, saveTournament } from '../db'
+import type { GameScore, TournamentRecord } from '../types'
+import type { TwoPlayerMode, AIDifficulty } from '../games/twoplayer/types'
+import Game2048 from '../games/Game2048'
+import Snake from '../games/Snake'
+import MemoryMatch from '../games/MemoryMatch'
+import Wordle from '../games/Wordle'
+import WhackAMole from '../games/WhackAMole'
+import TicTacToe2P from '../games/twoplayer/TicTacToe2P'
+import PingPong2P from '../games/twoplayer/PingPong2P'
+import AirHockey2P from '../games/twoplayer/AirHockey2P'
+import FlappyJump2P from '../games/twoplayer/FlappyJump2P'
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole'
+type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump'
+type TournamentPhase = 'game' | 'interstitial' | 'result'
+interface TournamentState {
+  mode: TwoPlayerMode; difficulty: AIDifficulty
+  gameIds: TwoPlayerGameId[]; currentIdx: number
+  scores: Record<string, { p1: number; p2: number }>
+  phase: TournamentPhase
+}
+type GamesView =
+  | { type: 'hub' }
+  | { type: 'solo'; gameId: SoloGameId }
+  | { type: 'pregame'; gameId: TwoPlayerGameId }
+  | { type: 'playing2p'; gameId: TwoPlayerGameId; mode: TwoPlayerMode; difficulty: AIDifficulty }
+  | { type: 'tournament-setup' }
+  | { type: 'tournament'; tState: TournamentState }
+
+// ─── Game definitions ─────────────────────────────────────────────────────────
+const SOLO_DEFS = [
+  { id: '2048' as SoloGameId, emoji: '🔢', name: '2048', tagline: 'Merge tiles to 2048' },
+  { id: 'snake' as SoloGameId, emoji: '🐍', name: 'Snake', tagline: 'Eat and grow' },
+  { id: 'memory' as SoloGameId, emoji: '🃏', name: 'Memory Match', tagline: 'Find all pairs' },
+  { id: 'wordle' as SoloGameId, emoji: '🔤', name: 'Wordle', tagline: 'Guess the word' },
+  { id: 'mole' as SoloGameId, emoji: '🐭', name: 'Whack-a-Mole', tagline: 'Whack as many as you can!' },
+]
+const TWO_PLAYER_DEFS: { id: TwoPlayerGameId; name: string; emoji: string; tagline: string }[] = [
+  { id: 'tictactoe', name: 'Tic-Tac-Toe', emoji: '❌', tagline: 'Classic X vs O battle' },
+  { id: 'pingpong', name: 'Ping Pong', emoji: '🏓', tagline: 'First to 7 wins' },
+  { id: 'airhockey', name: 'Air Hockey', emoji: '🏒', tagline: 'First to 5 goals wins' },
+  { id: 'flappyjump', name: 'Flappy Jump', emoji: '🐦', tagline: 'Survive the longest' },
+]
+const TWO_PLAYER_COMPONENTS = {
+  tictactoe: TicTacToe2P, pingpong: PingPong2P,
+  airhockey: AirHockey2P, flappyjump: FlappyJump2P,
+} as const
+const SOLO_COMPONENTS = {
+  '2048': Game2048, snake: Snake, memory: MemoryMatch, wordle: Wordle, mole: WhackAMole,
+} as const
+
+// ─── SVG Illustrations ────────────────────────────────────────────────────────
+function TicTacToeSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#tttBg)" />
+      <defs>
+        <linearGradient id="tttBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#3b1a8a" /><stop offset="1" stopColor="#1a0a4a" />
+        </linearGradient>
+      </defs>
+      {/* Grid */}
+      {[66, 132].map(x => <line key={x} x1={x} y1="16" x2={x} y2="140" stroke="rgba(255,255,255,0.25)" strokeWidth="3" strokeLinecap="round" />)}
+      {[68, 100].map(y => <line key={y} x1="16" y1={y} x2="184" y2={y} stroke="rgba(255,255,255,0.25)" strokeWidth="3" strokeLinecap="round" />)}
+      {/* X marks - red */}
+      {[[33, 42], [166, 42], [100, 110]].map(([cx, cy], i) => (
+        <g key={i}>
+          <line x1={cx-15} y1={cy-15} x2={cx+15} y2={cy+15} stroke="#ef4444" strokeWidth="7" strokeLinecap="round" />
+          <line x1={cx+15} y1={cy-15} x2={cx-15} y2={cy+15} stroke="#ef4444" strokeWidth="7" strokeLinecap="round" />
+        </g>
+      ))}
+      {/* O marks - blue */}
+      {[[100, 42], [33, 110], [166, 110]].map(([cx, cy], i) => (
+        <circle key={i} cx={cx} cy={cy} r="18" stroke="#3b82f6" strokeWidth="7" fill="none" />
+      ))}
+      {/* Win line */}
+      <line x1="33" y1="42" x2="166" y2="110" stroke="#fbbf24" strokeWidth="4" strokeLinecap="round" opacity="0.7" />
+      {/* Sparkles */}
+      {[[22, 18], [178, 20], [22, 140], [178, 138]].map(([x, y], i) => (
+        <circle key={i} cx={x} cy={y} r="3" fill="#fbbf24" opacity="0.6" />
+      ))}
+    </svg>
+  )
+}
+
+function PingPongSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#ppBg)" />
+      <defs>
+        <linearGradient id="ppBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0a4a1a" /><stop offset="1" stopColor="#041810" />
+        </linearGradient>
+      </defs>
+      {/* Table edges */}
+      <rect x="14" y="14" width="172" height="128" rx="8" stroke="rgba(255,255,255,0.15)" strokeWidth="2" fill="none" />
+      {/* Center line dashed */}
+      {Array.from({ length: 8 }, (_, i) => (
+        <line key={i} x1={32 + i * 20} y1="78" x2={44 + i * 20} y2="78" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+      ))}
+      {/* P2 paddle (blue, top) */}
+      <rect x="72" y="24" width="56" height="12" rx="6" fill="#3b82f6" />
+      <ellipse cx="100" cy="30" rx="6" ry="3" fill="rgba(255,255,255,0.3)" />
+      {/* P1 paddle (red, bottom) */}
+      <rect x="72" y="120" width="56" height="12" rx="6" fill="#ef4444" />
+      <ellipse cx="100" cy="126" rx="6" ry="3" fill="rgba(255,255,255,0.3)" />
+      {/* Ball with trails */}
+      <circle cx="118" cy="66" r="5" fill="rgba(255,255,255,0.2)" />
+      <circle cx="110" cy="72" r="6" fill="rgba(255,255,255,0.5)" />
+      <circle cx="100" cy="80" r="7.5" fill="#ffffff" />
+      {/* Score */}
+      <text x="24" y="84" fontFamily="Inter,sans-serif" fontSize="18" fontWeight="800" fill="rgba(239,68,68,0.85)">3</text>
+      <text x="168" y="84" fontFamily="Inter,sans-serif" fontSize="18" fontWeight="800" fill="rgba(59,130,246,0.85)" textAnchor="end">5</text>
+    </svg>
+  )
+}
+
+function AirHockeySvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#ahBg)" />
+      <defs>
+        <linearGradient id="ahBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0c2040" /><stop offset="1" stopColor="#041020" />
+        </linearGradient>
+      </defs>
+      {/* Table */}
+      <rect x="14" y="14" width="172" height="128" rx="12" fill="rgba(0,80,160,0.18)" stroke="rgba(59,158,255,0.35)" strokeWidth="2" />
+      {/* Goals */}
+      <rect x="70" y="14" width="60" height="16" rx="0" fill="rgba(239,68,68,0.25)" stroke="#ef4444" strokeWidth="1.5" />
+      <rect x="70" y="126" width="60" height="16" rx="0" fill="rgba(59,130,246,0.25)" stroke="#3b82f6" strokeWidth="1.5" />
+      {/* Center line */}
+      <line x1="14" y1="78" x2="186" y2="78" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" strokeDasharray="8 5" />
+      {/* Center circle */}
+      <circle cx="100" cy="78" r="28" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" fill="none" />
+      {/* P1 paddle (red) */}
+      <circle cx="68" cy="110" r="20" fill="#ef4444" opacity="0.9" />
+      <circle cx="68" cy="110" r="8" fill="rgba(255,255,255,0.25)" />
+      {/* P2 paddle (blue) */}
+      <circle cx="134" cy="48" r="20" fill="#3b82f6" opacity="0.9" />
+      <circle cx="134" cy="48" r="8" fill="rgba(255,255,255,0.25)" />
+      {/* Puck */}
+      <circle cx="100" cy="82" r="13" fill="#dde8ff" opacity="0.9" />
+      <circle cx="100" cy="82" r="5" fill="rgba(80,100,140,0.6)" />
+      {/* Velocity lines from puck */}
+      <line x1="92" y1="78" x2="78" y2="70" stroke="rgba(255,255,255,0.2)" strokeWidth="2" strokeLinecap="round" />
+      <line x1="90" y1="82" x2="74" y2="80" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function FlappyJumpSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#fjTopBg)" clipPath="url(#fjTop)" />
+      <rect width="200" height="156" rx="16" fill="url(#fjBotBg)" clipPath="url(#fjBot)" />
+      <defs>
+        <linearGradient id="fjTopBg" x1="0" y1="0" x2="0" y2="78" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1a2e5a" /><stop offset="1" stopColor="#0e1e3a" />
+        </linearGradient>
+        <linearGradient id="fjBotBg" x1="0" y1="78" x2="0" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1a3a20" /><stop offset="1" stopColor="#0e2014" />
+        </linearGradient>
+        <clipPath id="fjTop"><rect x="0" y="0" width="200" height="78" rx="16" /></clipPath>
+        <clipPath id="fjBot"><rect x="0" y="78" width="200" height="78" rx="16" /></clipPath>
+      </defs>
+      {/* Top half pipes */}
+      <rect x="130" y="0" width="28" height="36" fill="#2d8a3e" />
+      <rect x="126" y="30" width="36" height="10" rx="3" fill="#3daa4e" />
+      <rect x="130" y="54" width="28" height="24" fill="#2d8a3e" />
+      <rect x="126" y="54" width="36" height="10" rx="3" fill="#3daa4e" />
+      {/* Red bird (top half) */}
+      <circle cx="58" cy="40" r="13" fill="#ef4444" />
+      <circle cx="63" cy="36" r="4.5" fill="white" />
+      <circle cx="64" cy="36" r="2.5" fill="#111" />
+      <polygon points="71,40 79,37 79,43" fill="#f97316" />
+      {/* Divider */}
+      <rect x="0" y="75" width="200" height="6" fill="rgba(255,255,255,0.18)" />
+      {/* Bottom half pipes */}
+      <rect x="158" y="82" width="28" height="30" fill="#2d8a3e" />
+      <rect x="154" y="82" width="36" height="10" rx="3" fill="#3daa4e" />
+      <rect x="158" y="124" width="28" height="32" fill="#2d8a3e" />
+      <rect x="154" y="120" width="36" height="10" rx="3" fill="#3daa4e" />
+      {/* Blue bird (bottom half) */}
+      <circle cx="58" cy="118" r="13" fill="#3b82f6" />
+      <circle cx="63" cy="114" r="4.5" fill="white" />
+      <circle cx="64" cy="114" r="2.5" fill="#111" />
+      <polygon points="71,118 79,115 79,121" fill="#f97316" />
+      {/* Score pills */}
+      <rect x="86" y="30" width="30" height="18" rx="9" fill="rgba(255,255,255,0.12)" />
+      <text x="101" y="43" textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="12" fontWeight="800" fill="rgba(239,68,68,0.9)">4</text>
+      <rect x="86" y="108" width="30" height="18" rx="9" fill="rgba(255,255,255,0.12)" />
+      <text x="101" y="121" textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="12" fontWeight="800" fill="rgba(59,130,246,0.9)">2</text>
+    </svg>
+  )
+}
+
+const SVG_ILLUSTRATIONS: Record<TwoPlayerGameId, React.ComponentType> = {
+  tictactoe: TicTacToeSvg, pingpong: PingPongSvg,
+  airhockey: AirHockeySvg, flappyjump: FlappyJumpSvg,
+}
+
+// ─── Game Card ────────────────────────────────────────────────────────────────
+function TwoPlayerCard({ def, onTap, index }: {
+  def: typeof TWO_PLAYER_DEFS[0]; onTap: () => void; index: number
+}) {
+  const Illustration = SVG_ILLUSTRATIONS[def.id]
+  return (
+    <motion.button
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.07 }}
+      whileTap={{ scale: 0.96 }}
+      onClick={onTap}
+      className="w-full rounded-2xl overflow-hidden text-left flex flex-col"
+      style={{ border: '3px solid rgba(255,255,255,0.09)', background: 'var(--loft-card)', boxShadow: '0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)' }}
+    >
+      <div className="flex-1" style={{ aspectRatio: '1 / 0.76' }}>
+        <Illustration />
+      </div>
+      <div className="px-3 py-2.5 flex items-center gap-2" style={{ background: 'rgba(0,0,0,0.35)' }}>
+        <span className="text-base">{def.emoji}</span>
+        <span className="font-bold text-sm" style={{ color: 'var(--loft-text)' }}>{def.name}</span>
+      </div>
+    </motion.button>
+  )
+}
+
+// ─── Pre-game screen ──────────────────────────────────────────────────────────
+function PreGameScreen({ gameId, onBack, onStart }: {
+  gameId: TwoPlayerGameId
+  onBack: () => void
+  onStart: (mode: TwoPlayerMode, difficulty: AIDifficulty) => void
+}) {
+  const [aiSelected, setAiSelected] = useState(false)
+  const [diff, setDiff] = useState<AIDifficulty>('medium')
+  const def = TWO_PLAYER_DEFS.find(d => d.id === gameId)!
+  const Illustration = SVG_ILLUSTRATIONS[gameId]
+
+  return (
+    <motion.div key="pregame" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      className="absolute inset-0 flex flex-col" style={{ background: 'var(--loft-bg)', zIndex: 20 }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3 safe-top">
+        <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'var(--loft-card)' }}>
+          <ChevronLeft size={20} style={{ color: 'var(--loft-text)' }} />
+        </button>
+        <h1 className="text-xl font-bold" style={{ color: 'var(--loft-text)' }}>{def.name}</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scroll-area px-5 pb-8">
+        {/* Illustration */}
+        <div className="rounded-3xl overflow-hidden mb-6 mx-2" style={{ aspectRatio: '16/9', border: '3px solid rgba(255,255,255,0.08)' }}>
+          <Illustration />
+        </div>
+
+        <p className="text-center text-sm mb-8" style={{ color: 'var(--loft-muted)' }}>{def.tagline}</p>
+
+        {/* Vs Friend */}
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => onStart('2p', diff)}
+          className="w-full rounded-2xl p-4 mb-3 flex items-center gap-4"
+          style={{ background: 'rgba(59,158,255,0.12)', border: '2px solid rgba(59,158,255,0.3)', boxShadow: '0 0 20px rgba(59,158,255,0.1)' }}
+        >
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+            style={{ background: 'rgba(59,158,255,0.15)' }}>👥</div>
+          <div className="text-left">
+            <p className="font-black text-base" style={{ color: 'var(--loft-accent)' }}>Vs Friend</p>
+            <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>Pass & Play on one device</p>
+          </div>
+        </motion.button>
+
+        {/* Vs AI */}
+        <div className="rounded-2xl overflow-hidden" style={{ border: `2px solid ${aiSelected ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.09)'}`, background: aiSelected ? 'rgba(168,85,247,0.08)' : 'var(--loft-card)' }}>
+          <button
+            className="w-full p-4 flex items-center gap-4"
+            onClick={() => setAiSelected(!aiSelected)}
+          >
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+              style={{ background: 'rgba(168,85,247,0.15)' }}>🤖</div>
+            <div className="text-left flex-1">
+              <p className="font-black text-base" style={{ color: aiSelected ? '#a855f7' : 'var(--loft-text)' }}>Vs AI</p>
+              <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>Play against the computer</p>
+            </div>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center"
+              style={{ background: aiSelected ? '#a855f7' : 'rgba(255,255,255,0.1)' }}>
+              <span className="text-xs text-white font-bold">{aiSelected ? '✓' : '+'}</span>
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {aiSelected && (
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                <div className="px-4 pb-4">
+                  <p className="text-xs font-semibold mb-3" style={{ color: 'var(--loft-muted)' }}>DIFFICULTY</p>
+                  <div className="flex gap-2 mb-4">
+                    {(['easy', 'medium', 'hard'] as AIDifficulty[]).map(d => (
+                      <button key={d} onClick={() => setDiff(d)}
+                        className="flex-1 py-2.5 rounded-xl text-sm font-bold capitalize transition-all"
+                        style={{
+                          background: diff === d ? (d === 'easy' ? '#16a34a' : d === 'medium' ? '#d97706' : '#dc2626') : 'rgba(255,255,255,0.06)',
+                          color: diff === d ? '#fff' : 'var(--loft-muted)',
+                          border: diff === d ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                        }}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => onStart('ai', diff)}
+                    className="w-full py-3 rounded-2xl font-bold text-sm"
+                    style={{ background: '#a855f7', color: '#fff', boxShadow: '0 0 16px rgba(168,85,247,0.4)' }}>
+                    Start vs AI
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Tournament Setup ─────────────────────────────────────────────────────────
+function TournamentSetup({ onBack, onStart }: {
+  onBack: () => void
+  onStart: (mode: TwoPlayerMode, difficulty: AIDifficulty, gameIds: TwoPlayerGameId[]) => void
+}) {
+  const [mode, setMode] = useState<TwoPlayerMode>('2p')
+  const [diff, setDiff] = useState<AIDifficulty>('medium')
+  const [chosen, setChosen] = useState<TwoPlayerGameId[]>(['tictactoe', 'pingpong', 'airhockey', 'flappyjump'])
+
+  const toggle = (id: TwoPlayerGameId) =>
+    setChosen(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
+  return (
+    <motion.div key="tsetup" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+      transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      className="absolute inset-0 flex flex-col" style={{ background: 'var(--loft-bg)', zIndex: 20 }}>
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3 safe-top">
+        <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'var(--loft-card)' }}>
+          <ChevronLeft size={20} style={{ color: 'var(--loft-text)' }} />
+        </button>
+        <h1 className="text-xl font-bold" style={{ color: 'var(--loft-text)' }}>Tournament Setup</h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scroll-area px-5 pb-8">
+        {/* Trophy header */}
+        <div className="flex flex-col items-center py-6">
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-3"
+            style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', boxShadow: '0 0 30px rgba(245,158,11,0.4)' }}>
+            <Trophy size={40} className="text-white" />
+          </div>
+          <p className="text-sm" style={{ color: 'var(--loft-muted)' }}>Play all selected games, most wins takes the trophy</p>
+        </div>
+
+        {/* Mode */}
+        <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--loft-muted)' }}>MODE</p>
+        <div className="flex gap-2 mb-6">
+          {([['2p', '👥', 'Pass & Play'], ['ai', '🤖', 'Vs AI']] as [TwoPlayerMode, string, string][]).map(([m, icon, label]) => (
+            <button key={m} onClick={() => setMode(m)}
+              className="flex-1 py-3 rounded-2xl flex items-center justify-center gap-2 font-bold transition-all"
+              style={{
+                background: mode === m ? 'rgba(59,158,255,0.18)' : 'var(--loft-card)',
+                border: `2px solid ${mode === m ? 'rgba(59,158,255,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                color: mode === m ? 'var(--loft-accent)' : 'var(--loft-muted)',
+              }}>
+              <span>{icon}</span><span className="text-sm">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Difficulty (AI only) */}
+        <AnimatePresence>
+          {mode === 'ai' && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mb-6">
+              <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--loft-muted)' }}>AI DIFFICULTY</p>
+              <div className="flex gap-2">
+                {(['easy', 'medium', 'hard'] as AIDifficulty[]).map(d => (
+                  <button key={d} onClick={() => setDiff(d)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold capitalize"
+                    style={{
+                      background: diff === d ? (d === 'easy' ? '#16a34a' : d === 'medium' ? '#d97706' : '#dc2626') : 'var(--loft-card)',
+                      color: diff === d ? '#fff' : 'var(--loft-muted)',
+                      border: diff === d ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                    }}>
+                    {d}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Games */}
+        <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--loft-muted)' }}>GAMES TO PLAY</p>
+        <div className="space-y-2 mb-8">
+          {TWO_PLAYER_DEFS.map(def => (
+            <button key={def.id} onClick={() => toggle(def.id)}
+              className="w-full flex items-center gap-3 p-3.5 rounded-2xl transition-all"
+              style={{
+                background: chosen.includes(def.id) ? 'rgba(59,158,255,0.1)' : 'var(--loft-card)',
+                border: `1.5px solid ${chosen.includes(def.id) ? 'rgba(59,158,255,0.35)' : 'rgba(255,255,255,0.07)'}`,
+              }}>
+              {chosen.includes(def.id)
+                ? <CheckSquare size={20} style={{ color: 'var(--loft-accent)', flexShrink: 0 }} />
+                : <Square size={20} style={{ color: 'var(--loft-faint)', flexShrink: 0 }} />}
+              <span className="text-lg flex-shrink-0">{def.emoji}</span>
+              <span className="font-bold text-sm flex-1 text-left" style={{ color: 'var(--loft-text)' }}>{def.name}</span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          disabled={chosen.length === 0}
+          onClick={() => onStart(mode, diff, chosen)}
+          className="w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-opacity"
+          style={{
+            background: chosen.length ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'var(--loft-card)',
+            color: chosen.length ? '#fff' : 'var(--loft-muted)',
+            boxShadow: chosen.length ? '0 0 24px rgba(22,163,74,0.4)' : 'none',
+            opacity: chosen.length ? 1 : 0.5,
+          }}>
+          <Trophy size={18} />
+          Start Tournament
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Tournament Interstitial ──────────────────────────────────────────────────
+function TournamentInterstitial({ tState, onNext }: { tState: TournamentState; onNext: () => void }) {
+  const p1Total = Object.values(tState.scores).reduce((s, v) => s + v.p1, 0)
+  const p2Total = Object.values(tState.scores).reduce((s, v) => s + v.p2, 0)
+  const gamesLeft = tState.gameIds.length - tState.currentIdx
+  const justPlayed = tState.gameIds[tState.currentIdx - 1]
+  const justDef = TWO_PLAYER_DEFS.find(d => d.id === justPlayed)
+
+  return (
+    <motion.div key="interstitial" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 flex flex-col items-center justify-center px-6"
+      style={{ background: 'var(--loft-bg)', zIndex: 20 }}>
+      <div className="w-full max-w-sm">
+        <p className="text-center text-xs font-bold tracking-widest mb-2" style={{ color: 'var(--loft-muted)' }}>
+          GAME {tState.currentIdx} OF {tState.gameIds.length}
+        </p>
+        {justDef && (
+          <p className="text-center font-black text-xl mb-6" style={{ color: 'var(--loft-text)' }}>
+            {justDef.emoji} {justDef.name} — Done!
+          </p>
+        )}
+
+        {/* Standings */}
+        <div className="rounded-3xl p-5 mb-6"
+          style={{ background: 'var(--loft-card)', border: '1.5px solid rgba(255,255,255,0.08)' }}>
+          <p className="text-xs font-bold tracking-widest mb-4 text-center" style={{ color: 'var(--loft-muted)' }}>STANDINGS</p>
+          <div className="flex items-center gap-4">
+            <div className="flex-1 text-center">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-2"
+                style={{ background: '#ef4444', color: '#fff' }}>{p1Total}</div>
+              <p className="text-xs font-bold" style={{ color: '#ef4444' }}>
+                {tState.mode === 'ai' ? 'You' : 'Player 1'}
+              </p>
+            </div>
+            <div className="font-black text-xl" style={{ color: 'var(--loft-faint)' }}>VS</div>
+            <div className="flex-1 text-center">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-black mx-auto mb-2"
+                style={{ background: '#3b82f6', color: '#fff' }}>{p2Total}</div>
+              <p className="text-xs font-bold" style={{ color: '#3b82f6' }}>
+                {tState.mode === 'ai' ? 'AI' : 'Player 2'}
+              </p>
+            </div>
+          </div>
+          {/* Per-game breakdown */}
+          <div className="mt-4 space-y-1.5">
+            {tState.gameIds.slice(0, tState.currentIdx).map(gid => {
+              const sc = tState.scores[gid] ?? { p1: 0, p2: 0 }
+              const def = TWO_PLAYER_DEFS.find(d => d.id === gid)!
+              return (
+                <div key={gid} className="flex items-center text-xs">
+                  <span className="mr-1.5">{def.emoji}</span>
+                  <span className="flex-1" style={{ color: 'var(--loft-muted)' }}>{def.name}</span>
+                  <span className="font-bold" style={{ color: sc.p1 > sc.p2 ? '#ef4444' : 'var(--loft-faint)' }}>{sc.p1}</span>
+                  <span className="mx-1.5" style={{ color: 'var(--loft-faint)' }}>–</span>
+                  <span className="font-bold" style={{ color: sc.p2 > sc.p1 ? '#3b82f6' : 'var(--loft-faint)' }}>{sc.p2}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <button onClick={onNext}
+          className="w-full py-4 rounded-2xl font-black text-base loft-btn-accent">
+          {gamesLeft > 0 ? `Next: ${TWO_PLAYER_DEFS.find(d => d.id === tState.gameIds[tState.currentIdx])?.name ?? 'Game'}` : 'See Results'}
+        </button>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Tournament Result ────────────────────────────────────────────────────────
+function TournamentResult({ tState, onAgain, onBack }: {
+  tState: TournamentState; onAgain: () => void; onBack: () => void
+}) {
+  const p1Total = Object.values(tState.scores).reduce((s, v) => s + v.p1, 0)
+  const p2Total = Object.values(tState.scores).reduce((s, v) => s + v.p2, 0)
+  const winner = p1Total > p2Total ? 'p1' : p2Total > p1Total ? 'p2' : 'draw'
+  const p1Label = tState.mode === 'ai' ? 'You' : 'Player 1'
+  const p2Label = tState.mode === 'ai' ? 'AI' : 'Player 2'
+
+  return (
+    <motion.div key="tresult" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 flex flex-col items-center justify-center px-6 pb-tab-bar"
+      style={{ background: 'var(--loft-bg)', zIndex: 20 }}>
+      <div className="w-full max-w-sm text-center">
+        <motion.div initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 300, damping: 18, delay: 0.15 }}
+          className="text-7xl mb-4">🏆</motion.div>
+        <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+          className="text-4xl font-black mb-1"
+          style={{ color: winner === 'p1' ? '#ef4444' : winner === 'p2' ? '#3b82f6' : 'var(--loft-text)' }}>
+          {winner === 'draw' ? 'Tied!' : winner === 'p1' ? `${p1Label} Wins!` : `${p2Label} Wins!`}
+        </motion.h1>
+        <p className="text-sm mb-8" style={{ color: 'var(--loft-muted)' }}>
+          {winner === 'draw' ? 'Incredible — perfectly matched!' : 'Tournament Champion!'}
+        </p>
+
+        {/* Final scores */}
+        <div className="flex gap-4 mb-6 justify-center">
+          <div className="flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-black mb-2"
+              style={{ background: 'rgba(239,68,68,0.15)', border: '3px solid #ef4444', color: '#ef4444' }}>{p1Total}</div>
+            <p className="text-xs font-bold" style={{ color: '#ef4444' }}>{p1Label}</p>
+          </div>
+          <div className="self-center font-black text-xl" style={{ color: 'var(--loft-faint)' }}>–</div>
+          <div className="flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-black mb-2"
+              style={{ background: 'rgba(59,130,246,0.15)', border: '3px solid #3b82f6', color: '#3b82f6' }}>{p2Total}</div>
+            <p className="text-xs font-bold" style={{ color: '#3b82f6' }}>{p2Label}</p>
+          </div>
+        </div>
+
+        {/* Per-game */}
+        <div className="rounded-2xl p-4 mb-6 space-y-2"
+          style={{ background: 'var(--loft-card)', border: '1.5px solid rgba(255,255,255,0.07)' }}>
+          {tState.gameIds.map(gid => {
+            const sc = tState.scores[gid] ?? { p1: 0, p2: 0 }
+            const def = TWO_PLAYER_DEFS.find(d => d.id === gid)!
+            return (
+              <div key={gid} className="flex items-center text-xs">
+                <span className="mr-1.5">{def.emoji}</span>
+                <span className="flex-1 text-left" style={{ color: 'var(--loft-muted)' }}>{def.name}</span>
+                <span className="font-bold" style={{ color: sc.p1 > sc.p2 ? '#ef4444' : 'var(--loft-faint)' }}>{sc.p1}</span>
+                <span className="mx-1.5" style={{ color: 'var(--loft-faint)' }}>–</span>
+                <span className="font-bold" style={{ color: sc.p2 > sc.p1 ? '#3b82f6' : 'var(--loft-faint)' }}>{sc.p2}</span>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onBack} className="flex-1 py-3 rounded-2xl font-bold text-sm"
+            style={{ background: 'var(--loft-card)', color: 'var(--loft-muted)' }}>Back</button>
+          <button onClick={onAgain} className="flex-1 py-3 rounded-2xl font-bold text-sm loft-btn-accent">
+            Play Again
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// ─── Stats Sheet ──────────────────────────────────────────────────────────────
+function StatsSheet({ tournaments, onClose }: { tournaments: TournamentRecord[]; onClose: () => void }) {
+  const gameStats: Record<string, { p1: number; p2: number }> = {}
+  for (const t of tournaments) {
+    for (const [gid, sc] of Object.entries(t.scores)) {
+      if (!gameStats[gid]) gameStats[gid] = { p1: 0, p2: 0 }
+      gameStats[gid].p1 += sc.p1
+      gameStats[gid].p2 += sc.p2
+    }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="absolute inset-0 flex flex-col justify-end" style={{ zIndex: 60, background: 'rgba(0,0,0,0.6)' }}
+      onClick={onClose}>
+      <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        onClick={e => e.stopPropagation()}
+        className="rounded-t-3xl p-6"
+        style={{ background: 'var(--loft-bg2)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'var(--loft-border2)' }} />
+        <h3 className="font-black text-lg mb-4" style={{ color: 'var(--loft-text)' }}>Tournament Stats</h3>
+        <div className="space-y-3">
+          {TWO_PLAYER_DEFS.map(def => {
+            const sc = gameStats[def.id] ?? { p1: 0, p2: 0 }
+            return (
+              <div key={def.id} className="flex items-center gap-3">
+                <span className="text-xl">{def.emoji}</span>
+                <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--loft-text)' }}>{def.name}</span>
+                <span className="text-sm font-bold" style={{ color: '#ef4444' }}>{sc.p1}</span>
+                <span className="text-xs mx-1" style={{ color: 'var(--loft-faint)' }}>–</span>
+                <span className="text-sm font-bold" style={{ color: '#3b82f6' }}>{sc.p2}</span>
+              </div>
+            )
+          })}
+          {Object.keys(gameStats).length === 0 && (
+            <p className="text-sm text-center py-4" style={{ color: 'var(--loft-muted)' }}>No tournament data yet</p>
+          )}
+        </div>
+        <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="flex items-center justify-between text-sm">
+            <span style={{ color: 'var(--loft-muted)' }}>Tournaments played</span>
+            <span className="font-bold" style={{ color: 'var(--loft-text)' }}>{tournaments.length}</span>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ─── Hub ─────────────────────────────────────────────────────────────────────
+export default function Games() {
+  const [view, setView] = useState<GamesView>({ type: 'hub' })
+  const [section, setSection] = useState<'2p' | '1p'>('2p')
+  const [soloScores, setSoloScores] = useState<Record<string, GameScore>>({})
+  const [tournaments, setTournaments] = useState<TournamentRecord[]>([])
+  const [showStats, setShowStats] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const twoPRef = useRef<HTMLDivElement>(null)
+  const onePRef = useRef<HTMLDivElement>(null)
+
+  const loadData = () => {
+    getAllGameScores().then(all => {
+      const map: Record<string, GameScore> = {}
+      all.forEach(s => { map[s.gameId] = s })
+      setSoloScores(map)
+    })
+    getAllTournaments().then(setTournaments)
+  }
+
+  useEffect(() => {
+    if (view.type === 'hub') loadData()
+  }, [view.type])
+
+  const p1Wins = tournaments.filter(t => t.winner === 'p1').length
+  const p2Wins = tournaments.filter(t => t.winner === 'p2').length
+
+  const handleToggle = (s: '2p' | '1p') => {
+    setSection(s)
+    const target = s === '2p' ? twoPRef.current : onePRef.current
+    if (target && scrollRef.current) {
+      scrollRef.current.scrollTo({ top: target.offsetTop - 8, behavior: 'smooth' })
+    }
+  }
+
+  const handleTournamentStart = (mode: TwoPlayerMode, difficulty: AIDifficulty, gameIds: TwoPlayerGameId[]) => {
+    const scores: Record<string, { p1: number; p2: number }> = {}
+    gameIds.forEach(id => { scores[id] = { p1: 0, p2: 0 } })
+    setView({
+      type: 'tournament',
+      tState: { mode, difficulty, gameIds, currentIdx: 0, scores, phase: 'game' },
+    })
+  }
+
+  const handleGameEnd = (winner: 'p1' | 'p2' | 'draw') => {
+    if (view.type !== 'tournament') return
+    const ts = view.tState
+    const gameId = ts.gameIds[ts.currentIdx]
+    const newScores = { ...ts.scores }
+    if (winner === 'p1') newScores[gameId] = { p1: (newScores[gameId]?.p1 ?? 0) + 1, p2: newScores[gameId]?.p2 ?? 0 }
+    else if (winner === 'p2') newScores[gameId] = { p1: newScores[gameId]?.p1 ?? 0, p2: (newScores[gameId]?.p2 ?? 0) + 1 }
+    const nextIdx = ts.currentIdx + 1
+    const isLast = nextIdx >= ts.gameIds.length
+    setView({
+      type: 'tournament',
+      tState: { ...ts, scores: newScores, currentIdx: nextIdx, phase: isLast ? 'interstitial' : 'interstitial' },
+    })
+  }
+
+  const handleInterstitialNext = () => {
+    if (view.type !== 'tournament') return
+    const ts = view.tState
+    if (ts.currentIdx >= ts.gameIds.length) {
+      // Save and show result
+      const p1Total = Object.values(ts.scores).reduce((s, v) => s + v.p1, 0)
+      const p2Total = Object.values(ts.scores).reduce((s, v) => s + v.p2, 0)
+      const winner: 'p1' | 'p2' | 'draw' = p1Total > p2Total ? 'p1' : p2Total > p1Total ? 'p2' : 'draw'
+      const record: TournamentRecord = {
+        id: `tournament_${Date.now()}`,
+        date: new Date().toISOString(),
+        mode: ts.mode, difficulty: ts.difficulty,
+        games: ts.gameIds, scores: ts.scores, winner,
+      }
+      saveTournament(record).then(() => loadData())
+      setView({ type: 'tournament', tState: { ...ts, phase: 'result' } })
+    } else {
+      setView({ type: 'tournament', tState: { ...ts, phase: 'game' } })
+    }
+  }
+
+  // Render current view
+  if (view.type === 'solo') {
+    const GameComponent = SOLO_COMPONENTS[view.gameId]
+    return <GameComponent onBack={() => setView({ type: 'hub' })} />
+  }
+
+  if (view.type === 'playing2p') {
+    const GameComponent = TWO_PLAYER_COMPONENTS[view.gameId]
+    return (
+      <GameComponent
+        mode={view.mode} difficulty={view.difficulty}
+        onBack={() => setView({ type: 'hub' })}
+        onGameEnd={() => setView({ type: 'hub' })}
+      />
+    )
+  }
+
+  if (view.type === 'tournament') {
+    const ts = view.tState
+    if (ts.phase === 'game') {
+      const GameComponent = TWO_PLAYER_COMPONENTS[ts.gameIds[ts.currentIdx]]
+      return (
+        <GameComponent
+          mode={ts.mode} difficulty={ts.difficulty}
+          tournamentMode
+          onBack={() => setView({ type: 'hub' })}
+          onGameEnd={handleGameEnd}
+        />
+      )
+    }
+  }
+
+  // Hub + overlay views
+  return (
+    <div className="h-full flex flex-col relative" style={{ background: 'var(--loft-bg)' }}>
+      {/* Header */}
+      <div className="flex-shrink-0 px-5 pt-5 pb-3 safe-top"
+        style={{ background: 'var(--loft-bg2)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: 'rgba(59,158,255,0.1)', border: '1px solid rgba(59,158,255,0.18)' }}>
+            <span className="text-xl">🎮</span>
+          </div>
+          <h1 className="text-2xl font-extrabold tracking-tight" style={{ color: 'var(--loft-text)' }}>Games</h1>
+        </div>
+
+        {/* Segmented toggle */}
+        <div className="flex rounded-2xl p-1 gap-1" style={{ background: 'rgba(255,255,255,0.05)' }}>
+          {([['2p', '👥', '2 Players'], ['1p', '👤', '1 Player']] as ['2p' | '1p', string, string][]).map(([s, icon, label]) => (
+            <button key={s} onClick={() => handleToggle(s)}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-sm transition-all"
+              style={{
+                background: section === s ? 'rgba(59,158,255,0.18)' : 'transparent',
+                color: section === s ? 'var(--loft-accent)' : 'var(--loft-muted)',
+                border: section === s ? '1.5px solid rgba(59,158,255,0.35)' : '1.5px solid transparent',
+                boxShadow: section === s ? 'var(--loft-glow-sm)' : 'none',
+              }}>
+              <span className="text-base">{icon}</span>
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Scroll content */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-area px-4 pt-4"
+        style={{ paddingBottom: '88px' }}>
+        {/* 2P section */}
+        <div ref={twoPRef}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'rgba(59,158,255,0.1)' }}>
+              <Users size={13} style={{ color: 'var(--loft-accent)' }} />
+              <span className="text-xs font-black tracking-widest" style={{ color: 'var(--loft-accent)' }}>2 PLAYER GAMES</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            {TWO_PLAYER_DEFS.map((def, i) => (
+              <TwoPlayerCard key={def.id} def={def} index={i}
+                onTap={() => setView({ type: 'pregame', gameId: def.id })} />
+            ))}
+          </div>
+        </div>
+
+        {/* 1P section */}
+        <div ref={onePRef}>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
+              <User size={13} style={{ color: 'var(--loft-muted)' }} />
+              <span className="text-xs font-black tracking-widest" style={{ color: 'var(--loft-muted)' }}>1 PLAYER GAMES</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {SOLO_DEFS.map((game, i) => (
+              <motion.div key={game.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.06 }}
+                className={game.id === 'mole' ? 'col-span-2' : ''}>
+                <button
+                  onClick={() => setView({ type: 'solo', gameId: game.id })}
+                  className="w-full rounded-2xl border p-4 text-left active:scale-[0.97] transition-all"
+                  style={{ background: 'var(--loft-card)', borderColor: 'rgba(255,255,255,0.07)' }}>
+                  <span className="text-3xl">{game.emoji}</span>
+                  <h3 className="font-bold mt-2 text-base" style={{ color: 'var(--loft-text)' }}>{game.name}</h3>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--loft-muted)' }}>{game.tagline}</p>
+                  {soloScores[game.id]?.bestScore > 0 && (
+                    <div className="mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1"
+                      style={{ background: 'rgba(59,158,255,0.1)' }}>
+                      <span className="text-xs font-semibold" style={{ color: 'var(--loft-accent)' }}>
+                        Best: {soloScores[game.id].bestScore.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Tournament footer */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3"
+        style={{ background: 'var(--loft-bg2)', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+        {/* P1 wins */}
+        <button onClick={() => setShowStats(true)}
+          className="flex flex-col items-center gap-0.5 w-14">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-xl"
+            style={{ background: 'rgba(239,68,68,0.15)', border: '2.5px solid #ef4444', color: '#ef4444' }}>
+            {p1Wins}
+          </div>
+          <span className="text-xs" style={{ color: 'rgba(239,68,68,0.6)' }}>P1</span>
+        </button>
+
+        {/* Play Tournament button */}
+        <button onClick={() => setView({ type: 'tournament-setup' })}
+          className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-black text-sm"
+          style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)', color: '#fff', boxShadow: '0 0 20px rgba(22,163,74,0.35)' }}>
+          <Trophy size={16} />
+          PLAY TOURNAMENT
+          <Trophy size={16} />
+        </button>
+
+        {/* P2 wins */}
+        <button onClick={() => setShowStats(true)}
+          className="flex flex-col items-center gap-0.5 w-14">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center font-black text-xl"
+            style={{ background: 'rgba(59,130,246,0.15)', border: '2.5px solid #3b82f6', color: '#3b82f6' }}>
+            {p2Wins}
+          </div>
+          <span className="text-xs" style={{ color: 'rgba(59,130,246,0.6)' }}>P2</span>
+        </button>
+      </div>
+
+      {/* Overlay views */}
+      <AnimatePresence>
+        {view.type === 'pregame' && (
+          <PreGameScreen
+            key="pregame"
+            gameId={view.gameId}
+            onBack={() => setView({ type: 'hub' })}
+            onStart={(mode, difficulty) => setView({ type: 'playing2p', gameId: view.gameId, mode, difficulty })}
+          />
+        )}
+        {view.type === 'tournament-setup' && (
+          <TournamentSetup
+            key="tsetup"
+            onBack={() => setView({ type: 'hub' })}
+            onStart={handleTournamentStart}
+          />
+        )}
+        {view.type === 'tournament' && view.tState.phase === 'interstitial' && (
+          <TournamentInterstitial
+            key="interstitial"
+            tState={view.tState}
+            onNext={handleInterstitialNext}
+          />
+        )}
+        {view.type === 'tournament' && view.tState.phase === 'result' && (
+          <TournamentResult
+            key="tresult"
+            tState={view.tState}
+            onAgain={() => setView({ type: 'tournament-setup' })}
+            onBack={() => setView({ type: 'hub' })}
+          />
+        )}
+        {showStats && (
+          <StatsSheet key="stats" tournaments={tournaments} onClose={() => setShowStats(false)} />
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
