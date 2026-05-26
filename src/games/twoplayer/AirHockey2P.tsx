@@ -86,8 +86,8 @@ export default function AirHockey2P({ mode, difficulty = 'medium', p1Color = 're
       }
       stateRef.current = s
 
-      // AI speed (px/frame): Easy≈3, Medium≈5.5, Hard≈8.5 (human drag ≈8-10px/frame max)
-      const aiSpd = difficulty === 'easy' ? 3.0 : difficulty === 'medium' ? 5.5 : 8.5
+      // AI speed (px/frame): Easy≈3, Medium≈5.5, Hard≈9.8 (human drag ≈8-10px/frame max)
+      const aiSpd = difficulty === 'easy' ? 3.0 : difficulty === 'medium' ? 5.5 : 9.8
 
       const onTouchStart = (e: TouchEvent) => {
         e.preventDefault()
@@ -190,23 +190,26 @@ export default function AirHockey2P({ mode, difficulty = 'medium', p1Color = 're
           let targetX: number, targetY: number
 
           if (difficulty === 'hard') {
-            // Predict puck trajectory ~200ms ahead (12 frames)
+            // Predict puck trajectory ~280ms ahead (17 frames)
             let px = pk.x, py = pk.y, pvx = pk.vx, pvy = pk.vy
-            for (let i = 0; i < 12; i++) {
+            for (let i = 0; i < 17; i++) {
               px += pvx; py += pvy
               pvx *= FRICTION; pvy *= FRICTION
               if (px - PUCK_R < 0) { px = PUCK_R; pvx = Math.abs(pvx) * WALL_BOUNCE }
               if (px + PUCK_R > W) { px = W - PUCK_R; pvx = -Math.abs(pvx) * WALL_BOUNCE }
             }
             if (py < H/2) {
-              // Predicted puck in AI half — intercept it
-              targetX = px
+              // Attack: aim for goal corner away from P1's current position
+              const goalLeft = (W - s.goalW) / 2 + PAD_R * 0.5
+              const goalRight = (W + s.goalW) / 2 - PAD_R * 0.5
+              const cornerX = s.p1.x < W / 2 ? goalRight : goalLeft
+              targetX = Math.max(PAD_R, Math.min(W - PAD_R, cornerX))
               targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, py - PAD_R * 1.5))
             } else {
-              // Defend: position to cut off shooting angles
-              const puckAngle = Math.atan2(pk.y - H*0.15, pk.x - W/2)
-              targetX = Math.max(PAD_R, Math.min(W - PAD_R, W/2 + Math.cos(puckAngle) * 55))
-              targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, H*0.17))
+              // Defend: hug goal line, shift laterally to block angle
+              const puckAngle = Math.atan2(pk.y - H * 0.08, pk.x - W / 2)
+              targetX = Math.max(PAD_R, Math.min(W - PAD_R, W / 2 + Math.sin(puckAngle) * s.goalW * 0.45))
+              targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, H * 0.11))
             }
           } else if (difficulty === 'medium') {
             if (pk.y < H/2) {

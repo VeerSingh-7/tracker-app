@@ -131,10 +131,10 @@ export default function PingPong2P({ mode, difficulty = 'medium', p1Color = 'red
       addEv('touchend', onTouchEnd, { passive: false })
       addEv('mousemove', onMouseMove)
 
-      // AI: lag in frames (Easy ~217ms, Medium ~83ms, Hard ~17ms at 60fps)
-      const aiLagFrames = difficulty === 'easy' ? 13 : difficulty === 'medium' ? 5 : 1
+      // AI: lag in frames (Easy ~217ms, Medium ~83ms, Hard: instant)
+      const aiLagFrames = difficulty === 'easy' ? 13 : difficulty === 'medium' ? 5 : 0
       // AI: max speed as fraction of ball speed
-      const aiSpeedFactor = difficulty === 'easy' ? 0.60 : difficulty === 'medium' ? 0.90 : 1.10
+      const aiSpeedFactor = difficulty === 'easy' ? 0.60 : difficulty === 'medium' ? 0.90 : 1.30
 
       const update = () => {
         if (s.phase === 'countdown') {
@@ -154,7 +154,12 @@ export default function PingPong2P({ mode, difficulty = 'medium', p1Color = 'red
           const histIdx = Math.max(0, s.aiHistory.length - 1 - aiLagFrames)
           const seenBallX = s.aiHistory[histIdx]
           // Track ball when coming toward AI; drift to center otherwise
-          const targetX = s.bvy < 0 ? seenBallX : W / 2
+          // Hard: also angle returns toward the side P1 is furthest from
+          let targetX = s.bvy < 0 ? seenBallX : W / 2
+          if (difficulty === 'hard' && s.bvy < 0) {
+            const openSideOffset = s.p1x < W / 2 ? PAD_W * 0.45 : -PAD_W * 0.45
+            targetX = Math.max(PAD_W / 2, Math.min(W - PAD_W / 2, seenBallX + openSideOffset))
+          }
           const maxSpeed = s.speed * aiSpeedFactor
 
           // Easy occasionally hesitates

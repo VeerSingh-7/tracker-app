@@ -11,10 +11,11 @@ const JUMP_VY = -7.8
 const PIPE_W = 50
 const PIPE_GAP = 125
 const SCROLL_SPD = 2.6
+const FLAP_COOLDOWN = 10  // frames (~167ms) between flaps; prevents vy-reset stacking
 
 interface Bird {
   y: number; vy: number; alive: boolean; score: number
-  deathFrame: number | null
+  deathFrame: number | null; flapCooldown: number
 }
 interface Pipe {
   x: number; gapCenter: number; passed: boolean
@@ -33,20 +34,21 @@ function makePipe(x: number, hh: number): Pipe {
 }
 
 function freshBird(hh: number): Bird {
-  return { y: hh * 0.5, vy: 0, alive: true, score: 0, deathFrame: null }
+  // flapCooldown=20 gives the AI ~333ms to settle before first flap decision
+  return { y: hh * 0.5, vy: 0, alive: true, score: 0, deathFrame: null, flapCooldown: 20 }
 }
 
 function aiFlap(bird: Bird, pipes: Pipe[], hh: number, difficulty: AIDifficulty, frame: number) {
-  if (!bird.alive) return
+  if (!bird.alive || bird.flapCooldown > 0) return
 
-  // Easy: skip flap logic for brief windows → AI clips a pipe and dies around 10-20
+  // Easy: periodic blind window causes death around 10-20 pipes
   if (difficulty === 'easy' && frame % 180 < 16) return
 
-  const next = pipes.find(p => p.x + PIPE_W > BIRD_X - 4)
+  // Use !p.passed to avoid targeting pipes the bird already cleared
+  const next = pipes.find(p => !p.passed)
   if (!next) {
-    // No upcoming pipe — hold altitude near 42% down
-    const hold = hh * 0.42
-    if (bird.y > hold && bird.vy > -1) bird.vy = JUMP_VY
+    // No upcoming pipe: hold altitude near center
+    if (bird.y > hh * 0.45) { bird.vy = JUMP_VY; bird.flapCooldown = FLAP_COOLDOWN }
     return
   }
 
@@ -54,12 +56,13 @@ function aiFlap(bird: Bird, pipes: Pipe[], hh: number, difficulty: AIDifficulty,
     : difficulty === 'medium' ? PIPE_GAP * 0.22 : 9
   const target = next.gapCenter + (Math.random() - 0.5) * noiseRange
 
-  const lookahead = difficulty === 'hard' ? 30 : difficulty === 'medium' ? 20 : 12
+  const lookahead = difficulty === 'hard' ? 35 : difficulty === 'medium' ? 20 : 12
   let fy = bird.y, fvy = bird.vy
   for (let i = 0; i < lookahead; i++) { fvy += GRAVITY; fy += fvy }
 
-  const margin = difficulty === 'hard' ? 6 : difficulty === 'medium' ? 18 : 32
-  if (fy > target + margin || bird.y > target + 12) bird.vy = JUMP_VY
+  // margin is also the dead-zone: no flap while predicted position is within margin of target
+  const margin = difficulty === 'hard' ? 4 : difficulty === 'medium' ? 18 : 32
+  if (fy > target + margin) { bird.vy = JUMP_VY; bird.flapCooldown = FLAP_COOLDOWN }
 }
 
 export default function FlappyJump2P({
@@ -125,8 +128,11 @@ export default function FlappyJump2P({
       const tap = (y: number) => {
         if (s.phase === 'ready') { s.phase = 'playing'; return }
         if (s.phase !== 'playing') return
-        if (y >= H / 2 && s.p1.alive) s.p1.vy = JUMP_VY
-        else if (y < H / 2 && s.p2.alive && mode === '2p') s.p2.vy = JUMP_VY
+        if (y >= H / 2 && s.p1.alive && s.p1.flapCooldown === 0) {
+          s.p1.vy = JUMP_VY; s.p1.flapCooldown = FLAP_COOLDOWN
+        } else if (y < H / 2 && s.p2.alive && mode === '2p' && s.p2.flapCooldown === 0) {
+          s.p2.vy = JUMP_VY; s.p2.flapCooldown = FLAP_COOLDOWN
+        }
       }
       const onTouchStart = (e: TouchEvent) => {
         e.preventDefault()
@@ -140,6 +146,7 @@ export default function FlappyJump2P({
 
       const updateBird = (bird: Bird, pipes: Pipe[]) => {
         if (!bird.alive) return
+        if (bird.flapCooldown > 0) bird.flapCooldown--
         bird.vy += GRAVITY; bird.y += bird.vy
         if (bird.y - BIRD_R < 0) { bird.y = BIRD_R; bird.vy = 0 }
         if (bird.y + BIRD_R > HH) { bird.alive = false; bird.deathFrame = s.frame; return }
