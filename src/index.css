@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* ─── Game layout sizing (non-safe-area portions only) ─── */
+:root {
+  --game-header-h: 3.5rem;   /* game header visual content height excluding safe-area-top */
+  --tab-bar-h:     4rem;     /* tab bar visual content height excluding safe-area-bottom */
+}
+
+/* Canvas area: full viewport minus header, tab-bar, and safe-area insets */
+.canvas-area {
+  position: relative;
+  height: calc(100dvh - var(--game-header-h) - var(--tab-bar-h) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
 /* ─── Loftoff dark-navy theme tokens ─── */
 :root {
   --loft-bg:        #0a0e1a;

@@ -68,7 +68,11 @@ function hardMove(b: Cell[], ai: Cell, hu: Cell): number {
   return move
 }
 
-export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGameEnd, tournamentMode }: TwoPlayerGameProps) {
+export default function TicTacToe2P({ mode, difficulty = 'medium', p1Color = 'red', onBack, onGameEnd, tournamentMode }: TwoPlayerGameProps) {
+  const c1 = p1Color === 'red' ? '#ef4444' : '#3b82f6'
+  const c2 = p1Color === 'red' ? '#3b82f6' : '#ef4444'
+  const p1ColorName = p1Color === 'red' ? 'Red' : 'Blue'
+  const p2ColorName = p1Color === 'red' ? 'Blue' : 'Red'
   const [board, setBoard] = useState<Cell[]>(Array(9).fill(null))
   const [turn, setTurn] = useState<1 | 2>(1)
   const [result, setResult] = useState<{ winner: 'p1' | 'p2' | 'draw'; line: number[] | null } | null>(null)
@@ -142,7 +146,7 @@ export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGam
 
   return (
     <div className="h-full flex flex-col relative" style={{ background: 'var(--loft-bg)' }}>
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3 safe-top">
+      <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'var(--loft-card)' }}>
           <ChevronLeft size={20} style={{ color: 'var(--loft-text)' }} />
         </button>
@@ -156,20 +160,20 @@ export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGam
       <div className="flex items-center justify-between px-6 py-4">
         <div className={`flex items-center gap-3 transition-opacity ${turn === 1 && !result ? 'opacity-100' : 'opacity-35'}`}>
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl font-black"
-            style={{ background: 'rgba(239,68,68,0.15)', border: '2px solid #ef4444', color: '#ef4444' }}>X</div>
+            style={{ background: `${c1}26`, border: `2px solid ${c1}`, color: c1 }}>X</div>
           <div>
-            <p className="font-bold text-sm" style={{ color: '#ef4444' }}>{p1Label}</p>
-            <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>X · Red</p>
+            <p className="font-bold text-sm" style={{ color: c1 }}>{p1Label}</p>
+            <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>X · {p1ColorName}</p>
           </div>
         </div>
         <div className="text-lg font-black" style={{ color: 'var(--loft-faint)' }}>VS</div>
         <div className={`flex items-center gap-3 transition-opacity ${turn === 2 && !result ? 'opacity-100' : 'opacity-35'}`}>
           <div>
-            <p className="font-bold text-sm text-right" style={{ color: '#3b82f6' }}>{p2Label}</p>
-            <p className="text-xs text-right" style={{ color: 'var(--loft-muted)' }}>O · Blue</p>
+            <p className="font-bold text-sm text-right" style={{ color: c2 }}>{p2Label}</p>
+            <p className="text-xs text-right" style={{ color: 'var(--loft-muted)' }}>O · {p2ColorName}</p>
           </div>
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl font-black"
-            style={{ background: 'rgba(59,130,246,0.15)', border: '2px solid #3b82f6', color: '#3b82f6' }}>O</div>
+            style={{ background: `${c2}26`, border: `2px solid ${c2}`, color: c2 }}>O</div>
         </div>
       </div>
 
@@ -183,10 +187,10 @@ export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGam
                 className="aspect-square rounded-2xl flex items-center justify-center"
                 style={{
                   background: isWin
-                    ? (result?.winner === 'p1' ? 'rgba(239,68,68,0.22)' : result?.winner === 'p2' ? 'rgba(59,130,246,0.22)' : 'var(--loft-card)')
+                    ? (result?.winner === 'p1' ? `${c1}38` : result?.winner === 'p2' ? `${c2}38` : 'var(--loft-card)')
                     : 'var(--loft-card)',
-                  border: `3px solid ${isWin ? (result?.winner === 'p1' ? '#ef4444' : '#3b82f6') : 'rgba(255,255,255,0.08)'}`,
-                  boxShadow: isWin ? `0 0 16px ${result?.winner === 'p1' ? 'rgba(239,68,68,0.4)' : 'rgba(59,130,246,0.4)'}` : 'none',
+                  border: `3px solid ${isWin ? (result?.winner === 'p1' ? c1 : c2) : 'rgba(255,255,255,0.08)'}`,
+                  boxShadow: isWin ? `0 0 16px ${result?.winner === 'p1' ? `${c1}66` : `${c2}66`}` : 'none',
                 }}
               >
                 <AnimatePresence>
@@ -194,7 +198,7 @@ export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGam
                     <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 18 }}
                       className="text-5xl font-black select-none"
-                      style={{ color: cell === 'X' ? '#ef4444' : '#3b82f6' }}>
+                      style={{ color: cell === 'X' ? c1 : c2 }}>
                       {cell}
                     </motion.span>
                   )}
@@ -208,9 +212,9 @@ export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGam
       {/* AI thinking indicator */}
       {aiThinking && (
         <div className="flex items-center justify-center py-3 gap-2">
-          <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: '#3b82f6', animationDelay: '0ms' }} />
-          <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: '#3b82f6', animationDelay: '150ms' }} />
-          <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: '#3b82f6', animationDelay: '300ms' }} />
+          <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: c2, animationDelay: '0ms' }} />
+          <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: c2, animationDelay: '150ms' }} />
+          <div className="w-2 h-2 rounded-full animate-bounce" style={{ background: c2, animationDelay: '300ms' }} />
         </div>
       )}
 
@@ -218,7 +222,7 @@ export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGam
       {!result && !aiThinking && (
         <div className="flex justify-center py-3">
           <div className="px-4 py-2 rounded-full text-sm font-semibold"
-            style={{ background: 'var(--loft-card)', color: turn === 1 ? '#ef4444' : '#3b82f6' }}>
+            style={{ background: 'var(--loft-card)', color: turn === 1 ? c1 : c2 }}>
             {turn === 1 ? `${p1Label}'s turn` : `${p2Label}'s turn`}
           </div>
         </div>
@@ -238,14 +242,14 @@ export default function TicTacToe2P({ mode, difficulty = 'medium', onBack, onGam
                 {result.winner === 'draw' ? '🤝' : '🏆'}
               </div>
               <h2 className="text-3xl font-black mb-1"
-                style={{ color: result.winner === 'p1' ? '#ef4444' : result.winner === 'p2' ? '#3b82f6' : 'var(--loft-text)' }}>
+                style={{ color: result.winner === 'p1' ? c1 : result.winner === 'p2' ? c2 : 'var(--loft-text)' }}>
                 {result.winner === 'draw' ? "It's a Draw!"
                   : result.winner === 'p1' ? (mode === '2p' ? 'Player 1 Wins!' : 'You Win! 🎉')
                   : (mode === 'ai' ? 'AI Wins!' : 'Player 2 Wins!')}
               </h2>
               <p className="text-sm mb-6" style={{ color: 'var(--loft-muted)' }}>
                 {result.winner === 'draw' ? 'No one wins this round'
-                  : result.winner === 'p1' ? 'Red takes it!' : 'Blue takes it!'}
+                  : result.winner === 'p1' ? `${p1ColorName} takes it!` : `${p2ColorName} takes it!`}
               </p>
               <div className="flex gap-3">
                 <button onClick={handleBack}

@@ -25,12 +25,15 @@ interface AHState {
   goalW: number
 }
 
-export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGameEnd, tournamentMode }: TwoPlayerGameProps) {
+export default function AirHockey2P({ mode, difficulty = 'medium', p1Color = 'red', onBack, onGameEnd, tournamentMode }: TwoPlayerGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef<AHState | null>(null)
   const [scores, setScores] = useState([0, 0])
   const [gameResult, setGameResult] = useState<'p1' | 'p2' | null>(null)
   const gameResultRef = useRef<'p1' | 'p2' | null>(null)
+
+  const c1 = p1Color === 'red' ? '#ef4444' : '#3b82f6'
+  const c2 = p1Color === 'red' ? '#3b82f6' : '#ef4444'
 
   const saveScore = async (w: 'p1' | 'p2') => {
     const id = `airhockey_${mode === 'ai' ? `ai_${difficulty}` : '2p'}`
@@ -61,7 +64,7 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
     const initAndRun = () => {
       cleanup()
       const rect = canvas.getBoundingClientRect()
-      if (!rect.width || !rect.height) { rafId = requestAnimationFrame(initAndRun); return }
+      if (rect.width < 50 || rect.height < 100) { rafId = requestAnimationFrame(initAndRun); return }
 
       const dpr = window.devicePixelRatio || 1
       canvas.width = rect.width * dpr; canvas.height = rect.height * dpr
@@ -82,6 +85,9 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
         p1TouchId: null, p2TouchId: null,
       }
       stateRef.current = s
+
+      // AI speed (px/frame): Easy≈3, Medium≈5.5, Hard≈8.5 (human drag ≈8-10px/frame max)
+      const aiSpd = difficulty === 'easy' ? 3.0 : difficulty === 'medium' ? 5.5 : 8.5
 
       const onTouchStart = (e: TouchEvent) => {
         e.preventDefault()
@@ -147,8 +153,6 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
       addEv('mousemove', onMouseMove)
       addEv('mouseup', onMouseUp)
 
-      const aiSpd = difficulty === 'easy' ? 2.5 : difficulty === 'medium' ? 4.5 : 7
-
       const circlePaddleCollision = (pad: AHState['p1'], pk: AHState['puck']) => {
         const dx = pk.x - pad.x, dy = pk.y - pad.y
         const dist = Math.sqrt(dx*dx + dy*dy)
@@ -182,13 +186,49 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
         if (s.phase !== 'playing') return
 
         if (mode === 'ai') {
-          const puck = s.puck
+          const pk = s.puck
           let targetX: number, targetY: number
-          if (puck.y < H/2) {
-            targetX = puck.x; targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, puck.y - PAD_R * 1.5))
+
+          if (difficulty === 'hard') {
+            // Predict puck trajectory ~200ms ahead (12 frames)
+            let px = pk.x, py = pk.y, pvx = pk.vx, pvy = pk.vy
+            for (let i = 0; i < 12; i++) {
+              px += pvx; py += pvy
+              pvx *= FRICTION; pvy *= FRICTION
+              if (px - PUCK_R < 0) { px = PUCK_R; pvx = Math.abs(pvx) * WALL_BOUNCE }
+              if (px + PUCK_R > W) { px = W - PUCK_R; pvx = -Math.abs(pvx) * WALL_BOUNCE }
+            }
+            if (py < H/2) {
+              // Predicted puck in AI half — intercept it
+              targetX = px
+              targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, py - PAD_R * 1.5))
+            } else {
+              // Defend: position to cut off shooting angles
+              const puckAngle = Math.atan2(pk.y - H*0.15, pk.x - W/2)
+              targetX = Math.max(PAD_R, Math.min(W - PAD_R, W/2 + Math.cos(puckAngle) * 55))
+              targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, H*0.17))
+            }
+          } else if (difficulty === 'medium') {
+            if (pk.y < H/2) {
+              // Puck in AI half — attack with offset to aim at goal corners
+              const attackOffset = pk.x > W/2 ? -PAD_R * 0.8 : PAD_R * 0.8
+              targetX = Math.max(PAD_R, Math.min(W - PAD_R, pk.x + attackOffset))
+              targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, pk.y - PAD_R * 1.5))
+            } else {
+              // Defend corners: position between puck and goal
+              const cornerX = pk.x < W/2 ? W/2 - s.goalW*0.3 : W/2 + s.goalW*0.3
+              targetX = cornerX; targetY = H*0.18
+            }
           } else {
-            targetX = W/2; targetY = H*0.2
+            // Easy — simple attack or sit in defense
+            if (pk.y < H/2) {
+              targetX = pk.x
+              targetY = Math.max(PAD_R, Math.min(H/2 - PAD_R, pk.y))
+            } else {
+              targetX = W/2; targetY = H*0.2
+            }
           }
+
           const dx = targetX - s.p2.x, dy = targetY - s.p2.y
           const d = Math.sqrt(dx*dx + dy*dy)
           if (d > 1) {
@@ -241,12 +281,14 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
 
         const gL = (W - s.goalW) / 2, gR = (W + s.goalW) / 2
 
-        ctx.fillStyle = 'rgba(239,68,68,0.15)'; ctx.fillRect(gL, 0, s.goalW, 20)
-        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2
+        // Top goal (P2 scores) — c2 color
+        ctx.fillStyle = `${c2}26`; ctx.fillRect(gL, 0, s.goalW, 20)
+        ctx.strokeStyle = c2; ctx.lineWidth = 2
         ctx.beginPath(); ctx.moveTo(gL, 0); ctx.lineTo(gL, 20); ctx.lineTo(gR, 20); ctx.lineTo(gR, 0); ctx.stroke()
 
-        ctx.fillStyle = 'rgba(59,130,246,0.15)'; ctx.fillRect(gL, H-20, s.goalW, 20)
-        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2
+        // Bottom goal (P1 scores) — c1 color
+        ctx.fillStyle = `${c1}26`; ctx.fillRect(gL, H-20, s.goalW, 20)
+        ctx.strokeStyle = c1; ctx.lineWidth = 2
         ctx.beginPath(); ctx.moveTo(gL, H); ctx.lineTo(gL, H-20); ctx.lineTo(gR, H-20); ctx.lineTo(gR, H); ctx.stroke()
 
         ctx.setLineDash([10, 6]); ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1.5
@@ -257,28 +299,31 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
         ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 2; ctx.stroke()
 
         ctx.font = 'bold 36px Inter, system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillStyle = 'rgba(239,68,68,0.85)'; ctx.fillText(String(s.p1s), W/2, H * 0.75)
-        ctx.fillStyle = 'rgba(59,130,246,0.85)'; ctx.fillText(String(s.p2s), W/2, H * 0.25)
+        ctx.fillStyle = `${c1}d8`; ctx.fillText(String(s.p1s), W/2, H * 0.75)
+        ctx.fillStyle = `${c2}d8`; ctx.fillText(String(s.p2s), W/2, H * 0.25)
 
+        // P2 paddle (top, c2)
         ctx.beginPath(); ctx.arc(s.p2.x, s.p2.y, PAD_R, 0, Math.PI*2)
-        ctx.fillStyle = '#3b82f6'; ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 16; ctx.fill()
+        ctx.fillStyle = c2; ctx.shadowColor = c2; ctx.shadowBlur = 16; ctx.fill()
         ctx.beginPath(); ctx.arc(s.p2.x, s.p2.y, PAD_R * 0.42, 0, Math.PI*2)
         ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.shadowBlur = 0; ctx.fill()
 
+        // P1 paddle (bottom, c1)
         ctx.beginPath(); ctx.arc(s.p1.x, s.p1.y, PAD_R, 0, Math.PI*2)
-        ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 16; ctx.fill()
+        ctx.fillStyle = c1; ctx.shadowColor = c1; ctx.shadowBlur = 16; ctx.fill()
         ctx.beginPath(); ctx.arc(s.p1.x, s.p1.y, PAD_R * 0.42, 0, Math.PI*2)
         ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.shadowBlur = 0; ctx.fill()
 
+        // Puck
         ctx.beginPath(); ctx.arc(s.puck.x, s.puck.y, PUCK_R, 0, Math.PI*2)
         ctx.fillStyle = '#dde8ff'; ctx.shadowColor = 'rgba(200,220,255,0.5)'; ctx.shadowBlur = 8; ctx.fill()
         ctx.beginPath(); ctx.arc(s.puck.x, s.puck.y, PUCK_R * 0.4, 0, Math.PI*2)
         ctx.fillStyle = 'rgba(100,120,160,0.6)'; ctx.shadowBlur = 0; ctx.fill()
 
         ctx.font = 'bold 11px Inter, system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-        ctx.fillStyle = 'rgba(59,130,246,0.45)'; ctx.fillText(mode === 'ai' ? `AI (${difficulty})` : 'P2', 8, 8)
+        ctx.fillStyle = `${c2}72`; ctx.fillText(mode === 'ai' ? `AI (${difficulty})` : 'P2', 8, 8)
         ctx.textBaseline = 'bottom'
-        ctx.fillStyle = 'rgba(239,68,68,0.45)'; ctx.fillText(mode === 'ai' ? 'You' : 'P1', 8, H - 8)
+        ctx.fillStyle = `${c1}72`; ctx.fillText(mode === 'ai' ? 'You' : 'P1', 8, H - 8)
       }
 
       const loop = () => { update(); render(); rafId = requestAnimationFrame(loop) }
@@ -294,7 +339,7 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
     initAndRun()
 
     return () => { cleanup(); ro.disconnect(); clearTimeout(resizeTimer) }
-  }, [mode, difficulty])
+  }, [mode, difficulty, p1Color])
 
   const handleBack = () => { if (gameResultRef.current && onGameEnd) onGameEnd(gameResultRef.current); else onBack() }
   const handleNext = () => { if (gameResultRef.current && onGameEnd) onGameEnd(gameResultRef.current) }
@@ -309,19 +354,21 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
   }
 
   return (
-    <div className="h-full flex flex-col relative" style={{ background: '#061428' }}>
-      <div className="flex items-center gap-3 px-4 pt-3 pb-2 safe-top" style={{ background: 'rgba(6,20,40,0.95)' }}>
+    <div className="h-full flex flex-col" style={{ background: '#061428' }}>
+      <div className="flex items-center gap-3 px-4 pb-2 flex-shrink-0" style={{ background: 'rgba(6,20,40,0.95)', paddingTop: 'env(safe-area-inset-top)' }}>
         <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.08)' }}>
           <ChevronLeft size={20} className="text-white" />
         </button>
         <h1 className="text-lg font-bold text-white">Air Hockey</h1>
         <div className="ml-auto flex gap-3 items-center">
-          <span className="text-sm font-bold" style={{ color: '#ef4444' }}>{scores[0]}</span>
+          <span className="text-sm font-bold" style={{ color: c1 }}>{scores[0]}</span>
           <span className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>–</span>
-          <span className="text-sm font-bold" style={{ color: '#3b82f6' }}>{scores[1]}</span>
+          <span className="text-sm font-bold" style={{ color: c2 }}>{scores[1]}</span>
         </div>
       </div>
-      <canvas ref={canvasRef} className="flex-1 w-full" style={{ display: 'block', touchAction: 'none' }} />
+      <div className="canvas-area">
+        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', display: 'block' }} />
+      </div>
 
       <AnimatePresence>
         {gameResult && (
@@ -333,7 +380,7 @@ export default function AirHockey2P({ mode, difficulty = 'medium', onBack, onGam
               className="rounded-3xl p-8 text-center mx-5"
               style={{ background: '#0d1628', border: '2px solid rgba(255,255,255,0.12)', maxWidth: 300, width: '100%' }}>
               <div className="text-5xl mb-3">🏒</div>
-              <h2 className="text-3xl font-black mb-1" style={{ color: gameResult === 'p1' ? '#ef4444' : '#3b82f6' }}>
+              <h2 className="text-3xl font-black mb-1" style={{ color: gameResult === 'p1' ? c1 : c2 }}>
                 {gameResult === 'p1' ? (mode === 'ai' ? 'You Win!' : 'P1 Wins!') : (mode === 'ai' ? 'AI Wins!' : 'P2 Wins!')}
               </h2>
               <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.45)' }}>{scores[0]} – {scores[1]} · First to {WIN_SCORE}</p>

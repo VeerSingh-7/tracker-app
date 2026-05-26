@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronLeft, Trophy, Users, User, CheckSquare, Square } from 'lucide-react'
-import { getAllGameScores, getAllTournaments, saveTournament } from '../db'
+import { getAllGameScores, getAllTournaments, saveTournament, getUserProfile, saveUserProfile } from '../db'
 import type { GameScore, TournamentRecord } from '../types'
 import type { TwoPlayerMode, AIDifficulty } from '../games/twoplayer/types'
 import Game2048 from '../games/Game2048'
@@ -19,7 +19,7 @@ type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole'
 type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump'
 type TournamentPhase = 'game' | 'interstitial' | 'result'
 interface TournamentState {
-  mode: TwoPlayerMode; difficulty: AIDifficulty
+  mode: TwoPlayerMode; difficulty: AIDifficulty; p1Color: 'red' | 'blue'
   gameIds: TwoPlayerGameId[]; currentIdx: number
   scores: Record<string, { p1: number; p2: number }>
   phase: TournamentPhase
@@ -28,7 +28,7 @@ type GamesView =
   | { type: 'hub' }
   | { type: 'solo'; gameId: SoloGameId }
   | { type: 'pregame'; gameId: TwoPlayerGameId }
-  | { type: 'playing2p'; gameId: TwoPlayerGameId; mode: TwoPlayerMode; difficulty: AIDifficulty }
+  | { type: 'playing2p'; gameId: TwoPlayerGameId; mode: TwoPlayerMode; difficulty: AIDifficulty; p1Color: 'red' | 'blue' }
   | { type: 'tournament-setup' }
   | { type: 'tournament'; tState: TournamentState }
 
@@ -421,121 +421,204 @@ function TwoPlayerCard({ def, onTap, index }: {
   )
 }
 
-// ─── Pre-game screen ──────────────────────────────────────────────────────────
-function PreGameScreen({ gameId, onBack, onStart }: {
-  gameId: TwoPlayerGameId
+// ─── Colour Picker sub-screen ─────────────────────────────────────────────────
+function ColourPicker({ defaultColor, onConfirm, onSkip, onBack }: {
+  defaultColor: 'red' | 'blue'
+  onConfirm: (c: 'red' | 'blue') => void
+  onSkip: () => void
   onBack: () => void
-  onStart: (mode: TwoPlayerMode, difficulty: AIDifficulty) => void
 }) {
-  const [aiSelected, setAiSelected] = useState(false)
-  const [diff, setDiff] = useState<AIDifficulty>('medium')
-  const def = TWO_PLAYER_DEFS.find(d => d.id === gameId)!
-  const Illustration = SVG_ILLUSTRATIONS[gameId]
-
+  const [selected, setSelected] = useState<'red' | 'blue'>(defaultColor)
   return (
-    <motion.div key="pregame" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+    <motion.div key="colorpicker" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-      className="absolute inset-0 flex flex-col" style={{ background: 'var(--loft-bg)', zIndex: 20 }}>
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3 safe-top">
+      className="absolute inset-0 flex flex-col" style={{ background: 'var(--loft-bg)', zIndex: 30 }}>
+      <div className="flex items-center gap-3 px-4 pb-3"
+        style={{ paddingTop: 'env(safe-area-inset-top)', background: 'var(--loft-bg2)' }}>
         <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'var(--loft-card)' }}>
           <ChevronLeft size={20} style={{ color: 'var(--loft-text)' }} />
         </button>
-        <h1 className="text-xl font-bold" style={{ color: 'var(--loft-text)' }}>{def.name}</h1>
+        <h1 className="text-xl font-bold" style={{ color: 'var(--loft-text)' }}>Choose Your Colour</h1>
       </div>
-
-      <div className="flex-1 overflow-y-auto scroll-area px-5 pb-8">
-        {/* Illustration */}
-        <div className="rounded-3xl overflow-hidden mb-6 mx-2" style={{ aspectRatio: '16/9', border: '3px solid rgba(255,255,255,0.08)' }}>
-          <Illustration />
+      <div className="flex-1 flex flex-col items-center justify-center px-6">
+        <p className="text-sm text-center mb-6" style={{ color: 'var(--loft-muted)' }}>
+          Your colour plays at the <span className="font-bold text-white">bottom</span> of the screen
+        </p>
+        <div className="flex gap-4 w-full max-w-xs mb-8">
+          {(['red', 'blue'] as const).map(c => {
+            const hex = c === 'red' ? '#ef4444' : '#3b82f6'
+            const isSelected = selected === c
+            return (
+              <button
+                key={c}
+                onClick={() => setSelected(c)}
+                className="flex-1 rounded-3xl flex flex-col items-center justify-center gap-3 transition-all"
+                style={{
+                  aspectRatio: '1',
+                  background: `${hex}1a`,
+                  border: `3px solid ${isSelected ? hex : 'rgba(255,255,255,0.08)'}`,
+                  boxShadow: isSelected ? `0 0 24px ${hex}66` : 'none',
+                }}
+              >
+                <div className="w-14 h-14 rounded-full" style={{ background: hex }} />
+                <span className="font-bold text-sm capitalize" style={{ color: hex }}>{c}</span>
+                {isSelected && <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>✓ You</span>}
+              </button>
+            )
+          })}
         </div>
-
-        <p className="text-center text-sm mb-8" style={{ color: 'var(--loft-muted)' }}>{def.tagline}</p>
-
-        {/* Vs Friend */}
-        <motion.button
-          whileTap={{ scale: 0.97 }}
-          onClick={() => onStart('2p', diff)}
-          className="w-full rounded-2xl p-4 mb-3 flex items-center gap-4"
-          style={{ background: 'rgba(59,158,255,0.12)', border: '2px solid rgba(59,158,255,0.3)', boxShadow: '0 0 20px rgba(59,158,255,0.1)' }}
-        >
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
-            style={{ background: 'rgba(59,158,255,0.15)' }}>👥</div>
-          <div className="text-left">
-            <p className="font-black text-base" style={{ color: 'var(--loft-accent)' }}>Vs Friend</p>
-            <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>Pass & Play on one device</p>
-          </div>
-        </motion.button>
-
-        {/* Vs AI */}
-        <div className="rounded-2xl overflow-hidden" style={{ border: `2px solid ${aiSelected ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.09)'}`, background: aiSelected ? 'rgba(168,85,247,0.08)' : 'var(--loft-card)' }}>
-          <button
-            className="w-full p-4 flex items-center gap-4"
-            onClick={() => setAiSelected(!aiSelected)}
-          >
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
-              style={{ background: 'rgba(168,85,247,0.15)' }}>🤖</div>
-            <div className="text-left flex-1">
-              <p className="font-black text-base" style={{ color: aiSelected ? '#a855f7' : 'var(--loft-text)' }}>Vs AI</p>
-              <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>Play against the computer</p>
-            </div>
-            <div className="w-6 h-6 rounded-full flex items-center justify-center"
-              style={{ background: aiSelected ? '#a855f7' : 'rgba(255,255,255,0.1)' }}>
-              <span className="text-xs text-white font-bold">{aiSelected ? '✓' : '+'}</span>
-            </div>
-          </button>
-
-          <AnimatePresence>
-            {aiSelected && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                <div className="px-4 pb-4">
-                  <p className="text-xs font-semibold mb-3" style={{ color: 'var(--loft-muted)' }}>DIFFICULTY</p>
-                  <div className="flex gap-2 mb-4">
-                    {(['easy', 'medium', 'hard'] as AIDifficulty[]).map(d => (
-                      <button key={d} onClick={() => setDiff(d)}
-                        className="flex-1 py-2.5 rounded-xl text-sm font-bold capitalize transition-all"
-                        style={{
-                          background: diff === d ? (d === 'easy' ? '#16a34a' : d === 'medium' ? '#d97706' : '#dc2626') : 'rgba(255,255,255,0.06)',
-                          color: diff === d ? '#fff' : 'var(--loft-muted)',
-                          border: diff === d ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                        }}>
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                  <button onClick={() => onStart('ai', diff)}
-                    className="w-full py-3 rounded-2xl font-bold text-sm"
-                    style={{ background: '#a855f7', color: '#fff', boxShadow: '0 0 16px rgba(168,85,247,0.4)' }}>
-                    Start vs AI
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        <button
+          onClick={() => onConfirm(selected)}
+          className="w-full max-w-xs py-4 rounded-2xl font-black text-base mb-3"
+          style={{
+            background: selected === 'red' ? '#ef4444' : '#3b82f6',
+            color: '#fff',
+            boxShadow: `0 0 20px ${selected === 'red' ? 'rgba(239,68,68,0.4)' : 'rgba(59,130,246,0.4)'}`,
+          }}>
+          Play as {selected === 'red' ? 'Red' : 'Blue'}
+        </button>
+        <button onClick={onSkip} className="text-sm py-2"
+          style={{ color: 'var(--loft-muted)' }}>
+          Skip (keep {defaultColor})
+        </button>
       </div>
     </motion.div>
   )
 }
 
-// ─── Tournament Setup ─────────────────────────────────────────────────────────
-function TournamentSetup({ onBack, onStart }: {
+// ─── Pre-game screen ──────────────────────────────────────────────────────────
+function PreGameScreen({ gameId, defaultColor, onBack, onStart }: {
+  gameId: TwoPlayerGameId
+  defaultColor: 'red' | 'blue'
   onBack: () => void
-  onStart: (mode: TwoPlayerMode, difficulty: AIDifficulty, gameIds: TwoPlayerGameId[]) => void
+  onStart: (mode: TwoPlayerMode, difficulty: AIDifficulty, p1Color: 'red' | 'blue') => void
+}) {
+  const [aiSelected, setAiSelected] = useState(false)
+  const [diff, setDiff] = useState<AIDifficulty>('medium')
+  const [pendingStart, setPendingStart] = useState<{ mode: TwoPlayerMode; diff: AIDifficulty } | null>(null)
+  const def = TWO_PLAYER_DEFS.find(d => d.id === gameId)!
+  const Illustration = SVG_ILLUSTRATIONS[gameId]
+
+  return (
+    <>
+      <motion.div key="pregame" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        className="absolute inset-0 flex flex-col" style={{ background: 'var(--loft-bg)', zIndex: 20 }}>
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+          <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'var(--loft-card)' }}>
+            <ChevronLeft size={20} style={{ color: 'var(--loft-text)' }} />
+          </button>
+          <h1 className="text-xl font-bold" style={{ color: 'var(--loft-text)' }}>{def.name}</h1>
+        </div>
+
+        <div className="flex-1 overflow-y-auto scroll-area px-5 pb-8">
+          {/* Illustration */}
+          <div className="rounded-3xl overflow-hidden mb-6 mx-2" style={{ aspectRatio: '16/9', border: '3px solid rgba(255,255,255,0.08)' }}>
+            <Illustration />
+          </div>
+
+          <p className="text-center text-sm mb-8" style={{ color: 'var(--loft-muted)' }}>{def.tagline}</p>
+
+          {/* Vs Friend */}
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => setPendingStart({ mode: '2p', diff })}
+            className="w-full rounded-2xl p-4 mb-3 flex items-center gap-4"
+            style={{ background: 'rgba(59,158,255,0.12)', border: '2px solid rgba(59,158,255,0.3)', boxShadow: '0 0 20px rgba(59,158,255,0.1)' }}
+          >
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+              style={{ background: 'rgba(59,158,255,0.15)' }}>👥</div>
+            <div className="text-left">
+              <p className="font-black text-base" style={{ color: 'var(--loft-accent)' }}>Vs Friend</p>
+              <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>Pass & Play on one device</p>
+            </div>
+          </motion.button>
+
+          {/* Vs AI */}
+          <div className="rounded-2xl overflow-hidden" style={{ border: `2px solid ${aiSelected ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.09)'}`, background: aiSelected ? 'rgba(168,85,247,0.08)' : 'var(--loft-card)' }}>
+            <button
+              className="w-full p-4 flex items-center gap-4"
+              onClick={() => setAiSelected(!aiSelected)}
+            >
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+                style={{ background: 'rgba(168,85,247,0.15)' }}>🤖</div>
+              <div className="text-left flex-1">
+                <p className="font-black text-base" style={{ color: aiSelected ? '#a855f7' : 'var(--loft-text)' }}>Vs AI</p>
+                <p className="text-xs" style={{ color: 'var(--loft-muted)' }}>Play against the computer</p>
+              </div>
+              <div className="w-6 h-6 rounded-full flex items-center justify-center"
+                style={{ background: aiSelected ? '#a855f7' : 'rgba(255,255,255,0.1)' }}>
+                <span className="text-xs text-white font-bold">{aiSelected ? '✓' : '+'}</span>
+              </div>
+            </button>
+
+            <AnimatePresence>
+              {aiSelected && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                  <div className="px-4 pb-4">
+                    <p className="text-xs font-semibold mb-3" style={{ color: 'var(--loft-muted)' }}>DIFFICULTY</p>
+                    <div className="flex gap-2 mb-4">
+                      {(['easy', 'medium', 'hard'] as AIDifficulty[]).map(d => (
+                        <button key={d} onClick={() => setDiff(d)}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-bold capitalize transition-all"
+                          style={{
+                            background: diff === d ? (d === 'easy' ? '#16a34a' : d === 'medium' ? '#d97706' : '#dc2626') : 'rgba(255,255,255,0.06)',
+                            color: diff === d ? '#fff' : 'var(--loft-muted)',
+                            border: diff === d ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                          }}>
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setPendingStart({ mode: 'ai', diff })}
+                      className="w-full py-3 rounded-2xl font-bold text-sm"
+                      style={{ background: '#a855f7', color: '#fff', boxShadow: '0 0 16px rgba(168,85,247,0.4)' }}>
+                      Start vs AI
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
+
+      <AnimatePresence>
+        {pendingStart && (
+          <ColourPicker
+            defaultColor={defaultColor}
+            onConfirm={c => onStart(pendingStart.mode, pendingStart.diff, c)}
+            onSkip={() => onStart(pendingStart.mode, pendingStart.diff, defaultColor)}
+            onBack={() => setPendingStart(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
+// ─── Tournament Setup ─────────────────────────────────────────────────────────
+function TournamentSetup({ defaultColor, onBack, onStart }: {
+  defaultColor: 'red' | 'blue'
+  onBack: () => void
+  onStart: (mode: TwoPlayerMode, difficulty: AIDifficulty, gameIds: TwoPlayerGameId[], p1Color: 'red' | 'blue') => void
 }) {
   const [mode, setMode] = useState<TwoPlayerMode>('2p')
   const [diff, setDiff] = useState<AIDifficulty>('medium')
   const [chosen, setChosen] = useState<TwoPlayerGameId[]>(['tictactoe', 'pingpong', 'airhockey', 'flappyjump'])
+  const [pendingStart, setPendingStart] = useState(false)
 
   const toggle = (id: TwoPlayerGameId) =>
     setChosen(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
   return (
+    <>
     <motion.div key="tsetup" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
       transition={{ type: 'spring', stiffness: 320, damping: 32 }}
       className="absolute inset-0 flex flex-col" style={{ background: 'var(--loft-bg)', zIndex: 20 }}>
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3 safe-top">
+      <div className="flex items-center gap-3 px-4 pb-3" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'var(--loft-card)' }}>
           <ChevronLeft size={20} style={{ color: 'var(--loft-text)' }} />
         </button>
@@ -611,7 +694,7 @@ function TournamentSetup({ onBack, onStart }: {
 
         <button
           disabled={chosen.length === 0}
-          onClick={() => onStart(mode, diff, chosen)}
+          onClick={() => chosen.length && setPendingStart(true)}
           className="w-full py-4 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-opacity"
           style={{
             background: chosen.length ? 'linear-gradient(135deg, #16a34a, #15803d)' : 'var(--loft-card)',
@@ -624,6 +707,18 @@ function TournamentSetup({ onBack, onStart }: {
         </button>
       </div>
     </motion.div>
+
+    <AnimatePresence>
+      {pendingStart && (
+        <ColourPicker
+          defaultColor={defaultColor}
+          onConfirm={c => onStart(mode, diff, chosen, c)}
+          onSkip={() => onStart(mode, diff, chosen, defaultColor)}
+          onBack={() => setPendingStart(false)}
+        />
+      )}
+    </AnimatePresence>
+    </>
   )
 }
 
@@ -826,6 +921,7 @@ export default function Games() {
   const [soloScores, setSoloScores] = useState<Record<string, GameScore>>({})
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([])
   const [showStats, setShowStats] = useState(false)
+  const [defaultColor, setDefaultColor] = useState<'red' | 'blue'>('red')
   const scrollRef = useRef<HTMLDivElement>(null)
   const twoPRef = useRef<HTMLDivElement>(null)
   const onePRef = useRef<HTMLDivElement>(null)
@@ -840,8 +936,19 @@ export default function Games() {
   }
 
   useEffect(() => {
+    getUserProfile().then(p => { if (p?.preferredColor) setDefaultColor(p.preferredColor) })
+  }, [])
+
+  useEffect(() => {
     if (view.type === 'hub') loadData()
   }, [view.type])
+
+  const applyColor = (c: 'red' | 'blue') => {
+    setDefaultColor(c)
+    getUserProfile().then(p => {
+      if (p) saveUserProfile({ ...p, preferredColor: c })
+    })
+  }
 
   const p1Wins = tournaments.filter(t => t.winner === 'p1').length
   const p2Wins = tournaments.filter(t => t.winner === 'p2').length
@@ -854,12 +961,13 @@ export default function Games() {
     }
   }
 
-  const handleTournamentStart = (mode: TwoPlayerMode, difficulty: AIDifficulty, gameIds: TwoPlayerGameId[]) => {
+  const handleTournamentStart = (mode: TwoPlayerMode, difficulty: AIDifficulty, gameIds: TwoPlayerGameId[], p1Color: 'red' | 'blue') => {
+    applyColor(p1Color)
     const scores: Record<string, { p1: number; p2: number }> = {}
     gameIds.forEach(id => { scores[id] = { p1: 0, p2: 0 } })
     setView({
       type: 'tournament',
-      tState: { mode, difficulty, gameIds, currentIdx: 0, scores, phase: 'game' },
+      tState: { mode, difficulty, p1Color, gameIds, currentIdx: 0, scores, phase: 'game' },
     })
   }
 
@@ -909,7 +1017,7 @@ export default function Games() {
     const GameComponent = TWO_PLAYER_COMPONENTS[view.gameId]
     return (
       <GameComponent
-        mode={view.mode} difficulty={view.difficulty}
+        mode={view.mode} difficulty={view.difficulty} p1Color={view.p1Color}
         onBack={() => setView({ type: 'hub' })}
         onGameEnd={() => setView({ type: 'hub' })}
       />
@@ -922,7 +1030,7 @@ export default function Games() {
       const GameComponent = TWO_PLAYER_COMPONENTS[ts.gameIds[ts.currentIdx]]
       return (
         <GameComponent
-          mode={ts.mode} difficulty={ts.difficulty}
+          mode={ts.mode} difficulty={ts.difficulty} p1Color={ts.p1Color}
           tournamentMode
           onBack={() => setView({ type: 'hub' })}
           onGameEnd={handleGameEnd}
@@ -1032,13 +1140,18 @@ export default function Games() {
           <PreGameScreen
             key="pregame"
             gameId={view.gameId}
+            defaultColor={defaultColor}
             onBack={() => setView({ type: 'hub' })}
-            onStart={(mode, difficulty) => setView({ type: 'playing2p', gameId: view.gameId, mode, difficulty })}
+            onStart={(mode, difficulty, p1Color) => {
+              applyColor(p1Color)
+              setView({ type: 'playing2p', gameId: view.gameId, mode, difficulty, p1Color })
+            }}
           />
         )}
         {view.type === 'tournament-setup' && (
           <TournamentSetup
             key="tsetup"
+            defaultColor={defaultColor}
             onBack={() => setView({ type: 'hub' })}
             onStart={handleTournamentStart}
           />

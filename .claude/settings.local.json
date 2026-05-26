@@ -32,7 +32,11 @@
       "Bash(git init *)",
       "Bash(git config *)",
       "Bash(git branch *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(gh auth *)",
+      "Bash(gh repo *)",
+      "Bash(git push *)"
     ]
   }
 }

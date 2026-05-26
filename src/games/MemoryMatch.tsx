@@ -94,7 +94,7 @@ export default function MemoryMatch({ onBack }: Props) {
   return (
     <div className="h-full flex flex-col bg-slate-950 select-none">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-safe py-3 bg-slate-900 border-b border-slate-800">
+      <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <button onClick={onBack} className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
           <ArrowLeft size={20} />
         </button>

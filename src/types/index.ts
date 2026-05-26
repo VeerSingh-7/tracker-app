@@ -56,6 +56,7 @@ export interface UserProfile {
   id: 'main'
   gender: 'male' | 'female'
   bodyweightKg: number
+  preferredColor?: 'red' | 'blue'
   updatedAt: string
 }
 

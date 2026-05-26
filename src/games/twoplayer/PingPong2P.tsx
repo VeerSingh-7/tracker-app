@@ -10,6 +10,7 @@ const BALL_R = 9
 const PAD_OFFSET = 28
 const WIN_SCORE = 7
 const BASE_SPEED = 5.5
+const AI_HISTORY_LEN = 14
 
 interface PongState {
   w: number; h: number
@@ -21,6 +22,7 @@ interface PongState {
   countdown: number; countTimer: number
   winner: 'p1' | 'p2' | null
   p1touch: number | null; p2touch: number | null
+  aiHistory: number[]
 }
 
 function resetBall(s: PongState) {
@@ -33,12 +35,15 @@ function resetBall(s: PongState) {
   s.phase = 'countdown'; s.countdown = 3; s.countTimer = 0
 }
 
-export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGameEnd, tournamentMode }: TwoPlayerGameProps) {
+export default function PingPong2P({ mode, difficulty = 'medium', p1Color = 'red', onBack, onGameEnd, tournamentMode }: TwoPlayerGameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef<PongState | null>(null)
   const [scores, setScores] = useState([0, 0])
   const [gameResult, setGameResult] = useState<'p1' | 'p2' | null>(null)
   const gameResultRef = useRef<'p1' | 'p2' | null>(null)
+
+  const c1 = p1Color === 'red' ? '#ef4444' : '#3b82f6'  // P1 colour (bottom)
+  const c2 = p1Color === 'red' ? '#3b82f6' : '#ef4444'  // P2 colour (top)
 
   const saveScore = async (w: 'p1' | 'p2') => {
     const id = `pingpong_${mode === 'ai' ? `ai_${difficulty}` : '2p'}`
@@ -69,14 +74,13 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
     const initAndRun = () => {
       cleanup()
       const rect = canvas.getBoundingClientRect()
-      if (!rect.width || !rect.height) { rafId = requestAnimationFrame(initAndRun); return }
+      if (rect.width < 50 || rect.height < 100) { rafId = requestAnimationFrame(initAndRun); return }
 
       const dpr = window.devicePixelRatio || 1
       canvas.width = rect.width * dpr; canvas.height = rect.height * dpr
       const ctx = canvas.getContext('2d')!; ctx.scale(dpr, dpr)
       const W = rect.width, H = rect.height
 
-      // Preserve score if reinitializing mid-game (e.g. orientation change)
       const prev = stateRef.current
       const s: PongState = {
         w: W, h: H, bx: W/2, by: H/2, bvx: 0, bvy: 0,
@@ -86,6 +90,7 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
         phase: 'countdown', countdown: 3, countTimer: 0,
         winner: prev?.winner ?? null,
         p1touch: null, p2touch: null,
+        aiHistory: Array(AI_HISTORY_LEN).fill(W/2),
       }
       if (s.winner) { s.phase = 'done' } else { resetBall(s) }
       stateRef.current = s
@@ -95,7 +100,6 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
         for (let i = 0; i < e.changedTouches.length; i++) {
           const t = e.changedTouches[i]
           const ty = t.clientY - rect.top
-          // P1 = bottom 40%, P2 = top 40% (with 20% middle buffer)
           if (ty > H * 0.60) s.p1touch = t.identifier
           else if (ty < H * 0.40 && mode === '2p') s.p2touch = t.identifier
         }
@@ -127,7 +131,10 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
       addEv('touchend', onTouchEnd, { passive: false })
       addEv('mousemove', onMouseMove)
 
-      const aiSpeed = difficulty === 'easy' ? 0.03 : difficulty === 'medium' ? 0.055 : 0.092
+      // AI: lag in frames (Easy ~217ms, Medium ~83ms, Hard ~17ms at 60fps)
+      const aiLagFrames = difficulty === 'easy' ? 13 : difficulty === 'medium' ? 5 : 1
+      // AI: max speed as fraction of ball speed
+      const aiSpeedFactor = difficulty === 'easy' ? 0.60 : difficulty === 'medium' ? 0.90 : 1.10
 
       const update = () => {
         if (s.phase === 'countdown') {
@@ -139,14 +146,29 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
         if (s.phase !== 'playing') return
 
         if (mode === 'ai') {
-          // Track ball when coming toward AI, return to center otherwise
-          const targetX = s.bvy < 0 ? s.bx : W / 2
-          const miss = difficulty === 'easy' && Math.random() < 0.004
-          if (!miss) {
-            const diff = targetX - s.p2x
-            const spd = Math.abs(diff) * aiSpeed
-            s.p2x += Math.sign(diff) * Math.min(spd, Math.abs(diff))
+          // Record ball position history
+          s.aiHistory.push(s.bx)
+          if (s.aiHistory.length > AI_HISTORY_LEN) s.aiHistory.shift()
+
+          // AI "sees" ball position from aiLagFrames ago (index from the oldest end)
+          const histIdx = Math.max(0, s.aiHistory.length - 1 - aiLagFrames)
+          const seenBallX = s.aiHistory[histIdx]
+          // Track ball when coming toward AI; drift to center otherwise
+          const targetX = s.bvy < 0 ? seenBallX : W / 2
+          const maxSpeed = s.speed * aiSpeedFactor
+
+          // Easy occasionally hesitates
+          const hesitate = difficulty === 'easy' && Math.random() < 0.010
+          if (!hesitate) {
+            const dx = targetX - s.p2x
+            const step = Math.min(Math.abs(dx), maxSpeed)
+            s.p2x += Math.sign(dx) * step
             s.p2x = Math.max(PAD_W/2, Math.min(W - PAD_W/2, s.p2x))
+          }
+
+          // Hard: occasional micro-imperfection on extreme angles
+          if (difficulty === 'hard' && Math.abs(s.bvx / s.bvy) > 1.4 && Math.random() < 0.04) {
+            s.p2x += (Math.random() - 0.5) * 12
           }
         }
 
@@ -196,22 +218,22 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
         ctx.setLineDash([])
 
         // Touch zone hints
-        ctx.fillStyle = 'rgba(59,130,246,0.04)'; ctx.fillRect(0, 0, W, H * 0.40)
-        ctx.fillStyle = 'rgba(239,68,68,0.04)'; ctx.fillRect(0, H * 0.60, W, H * 0.40)
+        ctx.fillStyle = `${c2}08`; ctx.fillRect(0, 0, W, H * 0.40)
+        ctx.fillStyle = `${c1}08`; ctx.fillRect(0, H * 0.60, W, H * 0.40)
 
         ctx.font = 'bold 52px Inter, system-ui'; ctx.textBaseline = 'middle'
-        ctx.fillStyle = 'rgba(239,68,68,0.9)'; ctx.textAlign = 'left'
+        ctx.fillStyle = `${c1}e5`; ctx.textAlign = 'left'
         ctx.fillText(String(s.p1s), 20, H/2)
-        ctx.fillStyle = 'rgba(59,130,246,0.9)'; ctx.textAlign = 'right'
+        ctx.fillStyle = `${c2}e5`; ctx.textAlign = 'right'
         ctx.fillText(String(s.p2s), W - 20, H/2)
 
         const p2y = PAD_OFFSET
         ctx.beginPath(); ctx.roundRect(s.p2x - PAD_W/2, p2y - PAD_H/2, PAD_W, PAD_H, 7)
-        ctx.fillStyle = '#3b82f6'; ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0
+        ctx.fillStyle = c2; ctx.shadowColor = c2; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0
 
         const p1y = H - PAD_OFFSET
         ctx.beginPath(); ctx.roundRect(s.p1x - PAD_W/2, p1y - PAD_H/2, PAD_W, PAD_H, 7)
-        ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0
+        ctx.fillStyle = c1; ctx.shadowColor = c1; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0
 
         if (s.phase !== 'done') {
           ctx.beginPath(); ctx.arc(s.bx, s.by, BALL_R, 0, Math.PI * 2)
@@ -226,9 +248,9 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
         }
 
         ctx.font = 'bold 12px Inter, system-ui'; ctx.textAlign = 'center'
-        ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(59,130,246,0.5)'
+        ctx.textBaseline = 'top'; ctx.fillStyle = `${c2}80`
         ctx.fillText(mode === 'ai' ? `AI (${difficulty})` : 'P2 — drag top', W/2, 8)
-        ctx.textBaseline = 'bottom'; ctx.fillStyle = 'rgba(239,68,68,0.5)'
+        ctx.textBaseline = 'bottom'; ctx.fillStyle = `${c1}80`
         ctx.fillText(mode === 'ai' ? 'You — drag bottom' : 'P1 — drag bottom', W/2, H - 8)
       }
 
@@ -236,7 +258,6 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
       rafId = requestAnimationFrame(loop)
     }
 
-    // Use ResizeObserver to re-init when canvas gets proper dimensions or is rotated
     let resizeTimer = 0
     const ro = new ResizeObserver(() => {
       clearTimeout(resizeTimer)
@@ -246,7 +267,7 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
     initAndRun()
 
     return () => { cleanup(); ro.disconnect(); clearTimeout(resizeTimer) }
-  }, [mode, difficulty])
+  }, [mode, difficulty, p1Color])
 
   const handleBack = () => { if (gameResultRef.current && onGameEnd) onGameEnd(gameResultRef.current); else onBack() }
   const handleNext = () => { if (gameResultRef.current && onGameEnd) onGameEnd(gameResultRef.current) }
@@ -258,19 +279,21 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
   }
 
   return (
-    <div className="h-full flex flex-col relative" style={{ background: '#051020' }}>
-      <div className="flex items-center gap-3 px-4 pt-3 pb-2 safe-top" style={{ background: 'rgba(5,16,32,0.95)' }}>
+    <div className="h-full flex flex-col" style={{ background: '#051020' }}>
+      <div className="flex items-center gap-3 px-4 pb-2 safe-top flex-shrink-0" style={{ background: 'rgba(5,16,32,0.95)', paddingTop: 'env(safe-area-inset-top)' }}>
         <button onClick={onBack} className="p-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.08)' }}>
           <ChevronLeft size={20} className="text-white" />
         </button>
         <h1 className="text-lg font-bold text-white">Ping Pong</h1>
         <div className="ml-auto flex gap-3 items-center">
-          <span className="text-sm font-bold" style={{ color: '#ef4444' }}>{scores[0]}</span>
+          <span className="text-sm font-bold" style={{ color: c1 }}>{scores[0]}</span>
           <span className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>–</span>
-          <span className="text-sm font-bold" style={{ color: '#3b82f6' }}>{scores[1]}</span>
+          <span className="text-sm font-bold" style={{ color: c2 }}>{scores[1]}</span>
         </div>
       </div>
-      <canvas ref={canvasRef} className="flex-1 w-full" style={{ display: 'block', touchAction: 'none' }} />
+      <div className="canvas-area">
+        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none', display: 'block' }} />
+      </div>
 
       <AnimatePresence>
         {gameResult && (
@@ -282,7 +305,7 @@ export default function PingPong2P({ mode, difficulty = 'medium', onBack, onGame
               className="rounded-3xl p-8 text-center mx-5"
               style={{ background: '#0d1628', border: '2px solid rgba(255,255,255,0.12)', maxWidth: 300, width: '100%' }}>
               <div className="text-5xl mb-3">🏓</div>
-              <h2 className="text-3xl font-black mb-1" style={{ color: gameResult === 'p1' ? '#ef4444' : '#3b82f6' }}>
+              <h2 className="text-3xl font-black mb-1" style={{ color: gameResult === 'p1' ? c1 : c2 }}>
                 {gameResult === 'p1' ? (mode === 'ai' ? 'You Win!' : 'P1 Wins!') : (mode === 'ai' ? 'AI Wins!' : 'P2 Wins!')}
               </h2>
               <p className="text-sm mb-1" style={{ color: 'rgba(255,255,255,0.5)' }}>{scores[0]} – {scores[1]}</p>
