@@ -17,10 +17,11 @@ import AirHockey2P from '../games/twoplayer/AirHockey2P'
 import FlappyJump2P from '../games/twoplayer/FlappyJump2P'
 import Archery2P from '../games/twoplayer/Archery2P'
 import Tennis2P from '../games/twoplayer/Tennis2P'
+import PenaltyKicks2P from '../games/twoplayer/PenaltyKicks2P'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole' | 'sudoku' | 'solitaire'
-type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis'
+type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis' | 'penalty'
 type TournamentPhase = 'game' | 'interstitial' | 'result'
 interface TournamentState {
   mode: TwoPlayerMode; difficulty: AIDifficulty; p1Color: 'red' | 'blue'
@@ -53,11 +54,12 @@ const TWO_PLAYER_DEFS: { id: TwoPlayerGameId; name: string; emoji: string; tagli
   { id: 'flappyjump', name: 'Flappy Jump', emoji: '🐦', tagline: 'Survive the longest' },
   { id: 'archery', name: 'Archery', emoji: '🏹', tagline: 'Best of 5 arrows each' },
   { id: 'tennis', name: 'Tennis', emoji: '🎾', tagline: 'First to 7 wins' },
+  { id: 'penalty', name: 'Penalty Kicks', emoji: '⚽', tagline: '5 shots each, best wins' },
 ]
 const TWO_PLAYER_COMPONENTS = {
   tictactoe: TicTacToe2P, pingpong: PingPong2P,
   airhockey: AirHockey2P, flappyjump: FlappyJump2P,
-  archery: Archery2P, tennis: Tennis2P,
+  archery: Archery2P, tennis: Tennis2P, penalty: PenaltyKicks2P,
 } as const
 const SOLO_COMPONENTS = {
   '2048': Game2048, snake: Snake, memory: MemoryMatch, wordle: Wordle, mole: WhackAMole,
@@ -279,10 +281,64 @@ function TennisSvg() {
   )
 }
 
+function PenaltyKicksSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#pkBg)" />
+      <defs>
+        <linearGradient id="pkBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0a2a0a" /><stop offset="1" stopColor="#041408" />
+        </linearGradient>
+      </defs>
+      {/* Pitch stripes */}
+      {[0,1,2,3].map(i => (
+        <rect key={i} x={i*50} y="80" width="50" height="76" fill={i%2===0 ? 'rgba(255,255,255,0.025)' : 'transparent'} />
+      ))}
+      {/* Penalty spot */}
+      <circle cx="100" cy="128" r="3" fill="rgba(255,255,255,0.4)" />
+      {/* Penalty arc */}
+      <path d="M 68,104 A 40,40 0 0 1 132,104" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" fill="none" />
+      {/* Penalty box */}
+      <rect x="48" y="80" width="104" height="40" rx="0" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" fill="none" />
+      {/* Goal frame */}
+      <rect x="60" y="14" width="80" height="52" rx="2" fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" />
+      {/* Net hatching */}
+      {Array.from({length: 9}, (_, i) => (
+        <line key={`v${i}`} x1={65 + i*9} y1="16" x2={65 + i*9} y2="64" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+      ))}
+      {Array.from({length: 6}, (_, i) => (
+        <line key={`h${i}`} x1="62" y1={20 + i*8} x2="138" y2={20 + i*8} stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+      ))}
+      {/* Goal posts */}
+      <line x1="60" y1="14" x2="60" y2="80" stroke="rgba(255,255,255,0.8)" strokeWidth="3" strokeLinecap="round" />
+      <line x1="140" y1="14" x2="140" y2="80" stroke="rgba(255,255,255,0.8)" strokeWidth="3" strokeLinecap="round" />
+      <line x1="60" y1="14" x2="140" y2="14" stroke="rgba(255,255,255,0.8)" strokeWidth="3" strokeLinecap="round" />
+      {/* Keeper (blue, diving right) */}
+      <ellipse cx="120" cy="48" rx="12" ry="7" fill="#3b82f6" transform="rotate(-30 120 48)" />
+      <circle cx="108" cy="41" r="7" fill="#3b82f6" />
+      <circle cx="107" cy="39" r="5" fill="#60a5fa" />
+      {/* Shooter (red, bottom) */}
+      <circle cx="100" cy="118" r="7" fill="#ef4444" />
+      <rect x="96" y="122" width="8" height="10" rx="3" fill="#ef4444" />
+      {/* Ball mid-air */}
+      <circle cx="100" cy="85" r="9" fill="white" />
+      <path d="M100 76 L103 82 L100 85 L97 82 Z" fill="#222" opacity="0.6" />
+      <path d="M91 82 L97 82 L100 85 L97 89 L91 88 Z" fill="#222" opacity="0.4" />
+      {/* Motion trail */}
+      <circle cx="100" cy="97" r="5" fill="rgba(255,255,255,0.2)" />
+      <circle cx="100" cy="107" r="3" fill="rgba(255,255,255,0.1)" />
+      {/* Score dots P1 */}
+      {[0,1,2].map(i => <circle key={`p1-${i}`} cx={16 + i*12} cy="148" r="4" fill={i<2 ? '#10b981' : 'rgba(255,255,255,0.15)'} />)}
+      {/* Score dots P2 */}
+      {[0,1,2].map(i => <circle key={`p2-${i}`} cx={160 + i*12} cy="148" r="4" fill={i<1 ? '#10b981' : 'rgba(255,255,255,0.15)'} />)}
+    </svg>
+  )
+}
+
 const SVG_ILLUSTRATIONS: Record<TwoPlayerGameId, React.ComponentType> = {
   tictactoe: TicTacToeSvg, pingpong: PingPongSvg,
   airhockey: AirHockeySvg, flappyjump: FlappyJumpSvg,
-  archery: ArcherySvg, tennis: TennisSvg,
+  archery: ArcherySvg, tennis: TennisSvg, penalty: PenaltyKicksSvg,
 }
 
 // ─── Solo SVG Illustrations ───────────────────────────────────────────────────
@@ -781,7 +837,7 @@ function TournamentSetup({ defaultColor, onBack, onStart }: {
 }) {
   const [mode, setMode] = useState<TwoPlayerMode>('2p')
   const [diff, setDiff] = useState<AIDifficulty>('medium')
-  const [chosen, setChosen] = useState<TwoPlayerGameId[]>(['tictactoe', 'pingpong', 'airhockey', 'flappyjump'])
+  const [chosen, setChosen] = useState<TwoPlayerGameId[]>(['tictactoe', 'pingpong', 'airhockey', 'flappyjump', 'penalty'])
   const [pendingStart, setPendingStart] = useState(false)
 
   const toggle = (id: TwoPlayerGameId) =>
