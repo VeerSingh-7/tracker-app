@@ -9,14 +9,17 @@ import Snake from '../games/Snake'
 import MemoryMatch from '../games/MemoryMatch'
 import Wordle from '../games/Wordle'
 import WhackAMole from '../games/WhackAMole'
+import Sudoku from '../games/Sudoku'
 import TicTacToe2P from '../games/twoplayer/TicTacToe2P'
 import PingPong2P from '../games/twoplayer/PingPong2P'
 import AirHockey2P from '../games/twoplayer/AirHockey2P'
 import FlappyJump2P from '../games/twoplayer/FlappyJump2P'
+import Archery2P from '../games/twoplayer/Archery2P'
+import Tennis2P from '../games/twoplayer/Tennis2P'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole'
-type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump'
+type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole' | 'sudoku'
+type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis'
 type TournamentPhase = 'game' | 'interstitial' | 'result'
 interface TournamentState {
   mode: TwoPlayerMode; difficulty: AIDifficulty; p1Color: 'red' | 'blue'
@@ -39,19 +42,24 @@ const SOLO_DEFS = [
   { id: 'memory' as SoloGameId, emoji: '🃏', name: 'Memory Match', tagline: 'Find all pairs' },
   { id: 'wordle' as SoloGameId, emoji: '🔤', name: 'Wordle', tagline: 'Guess the word' },
   { id: 'mole' as SoloGameId, emoji: '🐭', name: 'Whack-a-Mole', tagline: 'Whack as many as you can!' },
+  { id: 'sudoku' as SoloGameId, emoji: '🔢', name: 'Sudoku', tagline: 'Fill the 9×9 grid' },
 ]
 const TWO_PLAYER_DEFS: { id: TwoPlayerGameId; name: string; emoji: string; tagline: string }[] = [
   { id: 'tictactoe', name: 'Tic-Tac-Toe', emoji: '❌', tagline: 'Classic X vs O battle' },
   { id: 'pingpong', name: 'Ping Pong', emoji: '🏓', tagline: 'First to 7 wins' },
   { id: 'airhockey', name: 'Air Hockey', emoji: '🏒', tagline: 'First to 5 goals wins' },
   { id: 'flappyjump', name: 'Flappy Jump', emoji: '🐦', tagline: 'Survive the longest' },
+  { id: 'archery', name: 'Archery', emoji: '🏹', tagline: 'Best of 5 arrows each' },
+  { id: 'tennis', name: 'Tennis', emoji: '🎾', tagline: 'First to 7 wins' },
 ]
 const TWO_PLAYER_COMPONENTS = {
   tictactoe: TicTacToe2P, pingpong: PingPong2P,
   airhockey: AirHockey2P, flappyjump: FlappyJump2P,
+  archery: Archery2P, tennis: Tennis2P,
 } as const
 const SOLO_COMPONENTS = {
   '2048': Game2048, snake: Snake, memory: MemoryMatch, wordle: Wordle, mole: WhackAMole,
+  sudoku: Sudoku,
 } as const
 
 // ─── SVG Illustrations ────────────────────────────────────────────────────────
@@ -200,9 +208,79 @@ function FlappyJumpSvg() {
   )
 }
 
+function ArcherySvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#archBg)" />
+      <defs>
+        <linearGradient id="archBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1a0a2e" /><stop offset="1" stopColor="#0a0516" />
+        </linearGradient>
+      </defs>
+      {/* Target rings (right side) */}
+      <circle cx="148" cy="78" r="48" fill="#1a5276" />
+      <circle cx="148" cy="78" r="38" fill="#000" opacity="0.5"/>
+      <circle cx="148" cy="78" r="28" fill="#c0392b" />
+      <circle cx="148" cy="78" r="18" fill="#e74c3c" />
+      <circle cx="148" cy="78" r="10" fill="#ffd700" />
+      <circle cx="148" cy="78" r="5" fill="#fff700" />
+      {/* Ring outlines */}
+      {[48,38,28,18,10].map((r,i) => <circle key={i} cx="148" cy="78" r={r} stroke="rgba(255,255,255,0.2)" strokeWidth="1" fill="none"/>)}
+      {/* Bow (left side) */}
+      <path d="M 38,30 Q 20,78 38,126" stroke="#92400e" strokeWidth="5" fill="none" strokeLinecap="round"/>
+      <line x1="38" y1="30" x2="38" y2="126" stroke="#d97706" strokeWidth="2" strokeDasharray="4,4"/>
+      {/* Arrow */}
+      <line x1="42" y1="78" x2="138" y2="78" stroke="#d97706" strokeWidth="3" strokeLinecap="round"/>
+      <polygon points="138,74 148,78 138,82" fill="#d97706"/>
+      {/* Fletching */}
+      <polygon points="42,78 30,72 34,78" fill="#ef4444" opacity="0.8"/>
+      <polygon points="42,78 30,84 34,78" fill="#ef4444" opacity="0.8"/>
+      {/* Score text */}
+      <text x="148" y="143" textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="10" fontWeight="800" fill="rgba(255,255,255,0.6)">BULLSEYE</text>
+    </svg>
+  )
+}
+
+function TennisSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#tenBg)" />
+      <defs>
+        <linearGradient id="tenBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#064e3b" /><stop offset="1" stopColor="#022c22" />
+        </linearGradient>
+      </defs>
+      {/* Court lines */}
+      <rect x="20" y="14" width="160" height="128" rx="4" stroke="rgba(255,255,255,0.4)" strokeWidth="2" fill="none"/>
+      <line x1="20" y1="78" x2="180" y2="78" stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+      <line x1="100" y1="14" x2="100" y2="78" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+      <line x1="100" y1="78" x2="100" y2="142" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+      <line x1="20" y1="42" x2="180" y2="42" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+      <line x1="20" y1="114" x2="180" y2="114" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+      {/* Net */}
+      <rect x="20" y="72" width="160" height="12" rx="2" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5"/>
+      <line x1="100" y1="72" x2="100" y2="84" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5"/>
+      {/* P1 racket (red, bottom) */}
+      <ellipse cx="100" cy="124" rx="22" ry="8" fill="#ef4444" opacity="0.9"/>
+      <line x1="100" y1="132" x2="100" y2="142" stroke="#92400e" strokeWidth="4" strokeLinecap="round"/>
+      {/* P2 racket (blue, top) */}
+      <ellipse cx="100" cy="32" rx="22" ry="8" fill="#3b82f6" opacity="0.9"/>
+      <line x1="100" y1="24" x2="100" y2="14" stroke="#1e3a8a" strokeWidth="4" strokeLinecap="round"/>
+      {/* Ball */}
+      <circle cx="128" cy="60" r="8" fill="#facc15"/>
+      <path d="M 124,54 Q 128,58 124,66" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" fill="none"/>
+      <path d="M 132,54 Q 128,58 132,66" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" fill="none"/>
+      {/* Score */}
+      <text x="25" y="100" fontFamily="Inter,sans-serif" fontSize="16" fontWeight="800" fill="rgba(239,68,68,0.9)">3</text>
+      <text x="175" y="60" fontFamily="Inter,sans-serif" fontSize="16" fontWeight="800" fill="rgba(59,130,246,0.9)" textAnchor="end">5</text>
+    </svg>
+  )
+}
+
 const SVG_ILLUSTRATIONS: Record<TwoPlayerGameId, React.ComponentType> = {
   tictactoe: TicTacToeSvg, pingpong: PingPongSvg,
   airhockey: AirHockeySvg, flappyjump: FlappyJumpSvg,
+  archery: ArcherySvg, tennis: TennisSvg,
 }
 
 // ─── Solo SVG Illustrations ───────────────────────────────────────────────────
@@ -356,9 +434,56 @@ function WhackAMoleSvg() {
   )
 }
 
+function SudokuSvg() {
+  const nums = [
+    [5,3,0,0,7],
+    [6,0,0,1,9],
+    [0,9,8,0,0],
+    [8,0,0,0,6],
+    [4,0,0,8,3],
+  ]
+  const highlighted: [number,number][] = [[1,1],[2,3],[3,2]]
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#sdkBg)" />
+      <defs>
+        <linearGradient id="sdkBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0f172a" /><stop offset="1" stopColor="#0a0e1f" />
+        </linearGradient>
+      </defs>
+      {nums.map((row, ri) => row.map((n, ci) => {
+        const x = 16 + ci * 34, y = 12 + ri * 28
+        const isHighlighted = highlighted.some(([r,c]) => r===ri && c===ci)
+        const isEmpty = n === 0
+        return (
+          <g key={`${ri}-${ci}`}>
+            <rect x={x} y={y} width={30} height={24} rx={4}
+              fill={isHighlighted ? 'rgba(59,130,246,0.3)' : isEmpty ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.08)'}
+              stroke={isHighlighted ? 'rgba(59,130,246,0.6)' : 'rgba(255,255,255,0.12)'} strokeWidth="1" />
+            {n > 0 && <text x={x+15} y={y+16} textAnchor="middle" dominantBaseline="middle"
+              fontFamily="Inter,sans-serif" fontSize="13" fontWeight={isEmpty?'400':'700'}
+              fill={isHighlighted ? '#60a5fa' : 'rgba(255,255,255,0.85)'}>
+              {n}
+            </text>}
+          </g>
+        )
+      }))}
+      <rect x="16" y="12" width="102" height="83" rx="4" stroke="rgba(255,255,255,0.25)" strokeWidth="2" fill="none"/>
+      <text x="53" y="34" fontFamily="Inter,sans-serif" fontSize="5" fill="rgba(156,163,175,0.8)">1 2</text>
+      <text x="53" y="40" fontFamily="Inter,sans-serif" fontSize="5" fill="rgba(156,163,175,0.8)">4 7</text>
+      {[1,2,3,4].map(i => (
+        <g key={i}>
+          <rect x={16 + 5*34 + (i-1)*20} y="12" width="16" height="24" rx="3" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5"/>
+          <rect x={16} y={12 + 5*28 + (i-1)*22} width="30" height="18" rx="3" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5"/>
+        </g>
+      ))}
+    </svg>
+  )
+}
+
 const SOLO_SVG_ILLUSTRATIONS: Record<SoloGameId, React.ComponentType> = {
   '2048': Game2048Svg, snake: SnakeSvg, memory: MemoryMatchSvg,
-  wordle: WordleSvg, mole: WhackAMoleSvg,
+  wordle: WordleSvg, mole: WhackAMoleSvg, sudoku: SudokuSvg,
 }
 
 // ─── Solo Game Card ───────────────────────────────────────────────────────────
