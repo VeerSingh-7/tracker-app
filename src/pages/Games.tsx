@@ -18,10 +18,11 @@ import FlappyJump2P from '../games/twoplayer/FlappyJump2P'
 import Archery2P from '../games/twoplayer/Archery2P'
 import Tennis2P from '../games/twoplayer/Tennis2P'
 import PenaltyKicks2P from '../games/twoplayer/PenaltyKicks2P'
+import Chess2P from '../games/twoplayer/Chess2P'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole' | 'sudoku' | 'solitaire'
-type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis' | 'penalty'
+type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis' | 'penalty' | 'chess'
 type TournamentPhase = 'game' | 'interstitial' | 'result'
 interface TournamentState {
   mode: TwoPlayerMode; difficulty: AIDifficulty; p1Color: 'red' | 'blue'
@@ -55,11 +56,12 @@ const TWO_PLAYER_DEFS: { id: TwoPlayerGameId; name: string; emoji: string; tagli
   { id: 'archery', name: 'Archery', emoji: '🏹', tagline: 'Best of 5 arrows each' },
   { id: 'tennis', name: 'Tennis', emoji: '🎾', tagline: 'First to 7 wins' },
   { id: 'penalty', name: 'Penalty Kicks', emoji: '⚽', tagline: '5 shots each, best wins' },
+  { id: 'chess', name: 'Chess', emoji: '♟', tagline: 'Classic strategy game' },
 ]
 const TWO_PLAYER_COMPONENTS = {
   tictactoe: TicTacToe2P, pingpong: PingPong2P,
   airhockey: AirHockey2P, flappyjump: FlappyJump2P,
-  archery: Archery2P, tennis: Tennis2P, penalty: PenaltyKicks2P,
+  archery: Archery2P, tennis: Tennis2P, penalty: PenaltyKicks2P, chess: Chess2P,
 } as const
 const SOLO_COMPONENTS = {
   '2048': Game2048, snake: Snake, memory: MemoryMatch, wordle: Wordle, mole: WhackAMole,
@@ -335,10 +337,54 @@ function PenaltyKicksSvg() {
   )
 }
 
+function ChessSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#chessBg)" />
+      <defs>
+        <linearGradient id="chessBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1a0f2e" /><stop offset="1" stopColor="#0a0618" />
+        </linearGradient>
+      </defs>
+      {/* 5×5 board */}
+      {Array.from({ length: 5 }, (_, r) =>
+        Array.from({ length: 5 }, (_, c) => (
+          <rect key={`${r}-${c}`}
+            x={28 + c * 28} y={14 + r * 26}
+            width={28} height={26}
+            fill={(r + c) % 2 === 0 ? '#f0d9b5' : '#b58863'}
+            opacity={0.9}
+          />
+        ))
+      )}
+      {/* Board border */}
+      <rect x="28" y="14" width="140" height="130" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" rx="2" />
+      {/* Check glow on one square */}
+      <rect x="56" y="66" width="28" height="26" fill="rgba(220,40,40,0.55)" rx="1" />
+      <rect x="56" y="66" width="28" height="26" fill="none" stroke="#ef4444" strokeWidth="2" rx="1" />
+      {/* White King ♔ on glowing square */}
+      <text x="70" y="84" textAnchor="middle" fontSize="19" fill="#1a0f2e"
+        fontFamily="serif" style={{ filter: 'drop-shadow(0 0 3px rgba(255,100,100,0.8))' }}>♔</text>
+      {/* Black Queen ♛ */}
+      <text x="98" y="58" textAnchor="middle" fontSize="19" fill="#1a0f2e" fontFamily="serif">♛</text>
+      {/* White Knight ♘ */}
+      <text x="126" y="110" textAnchor="middle" fontSize="17" fill="#5c3d1e" fontFamily="serif"
+        style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.5))' }}>♘</text>
+      {/* Black Rook ♜ */}
+      <text x="42" y="136" textAnchor="middle" fontSize="16" fill="#1a0f2e" fontFamily="serif">♜</text>
+      {/* White Pawn ♙ */}
+      <text x="154" y="32" textAnchor="middle" fontSize="14" fill="#5c3d1e" fontFamily="serif">♙</text>
+      {/* "CHECK" label */}
+      <rect x="60" y="142" width="80" height="12" rx="6" fill="rgba(220,40,40,0.18)" />
+      <text x="100" y="151" textAnchor="middle" fontFamily="Inter,sans-serif" fontSize="8" fontWeight="800" fill="#ef4444" letterSpacing="1">CHECK</text>
+    </svg>
+  )
+}
+
 const SVG_ILLUSTRATIONS: Record<TwoPlayerGameId, React.ComponentType> = {
   tictactoe: TicTacToeSvg, pingpong: PingPongSvg,
   airhockey: AirHockeySvg, flappyjump: FlappyJumpSvg,
-  archery: ArcherySvg, tennis: TennisSvg, penalty: PenaltyKicksSvg,
+  archery: ArcherySvg, tennis: TennisSvg, penalty: PenaltyKicksSvg, chess: ChessSvg,
 }
 
 // ─── Solo SVG Illustrations ───────────────────────────────────────────────────
@@ -652,11 +698,12 @@ function TwoPlayerCard({ def, onTap, index }: {
 }
 
 // ─── Colour Picker sub-screen ─────────────────────────────────────────────────
-function ColourPicker({ defaultColor, onConfirm, onSkip, onBack }: {
+function ColourPicker({ defaultColor, onConfirm, onSkip, onBack, chessMode }: {
   defaultColor: 'red' | 'blue'
   onConfirm: (c: 'red' | 'blue') => void
   onSkip: () => void
   onBack: () => void
+  chessMode?: boolean
 }) {
   const [selected, setSelected] = useState<'red' | 'blue'>(defaultColor)
   return (
@@ -672,7 +719,9 @@ function ColourPicker({ defaultColor, onConfirm, onSkip, onBack }: {
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-6">
         <p className="text-sm text-center mb-6" style={{ color: 'var(--loft-muted)' }}>
-          Your colour plays at the <span className="font-bold text-white">bottom</span> of the screen
+          {chessMode
+            ? <>Your colour decides <span className="font-bold text-white">which chess pieces you play</span></>
+            : <>Your colour plays at the <span className="font-bold text-white">bottom</span> of the screen</>}
         </p>
         <div className="flex gap-4 w-full max-w-xs mb-8">
           {(['red', 'blue'] as const).map(c => {
@@ -692,6 +741,7 @@ function ColourPicker({ defaultColor, onConfirm, onSkip, onBack }: {
               >
                 <div className="w-14 h-14 rounded-full" style={{ background: hex }} />
                 <span className="font-bold text-sm capitalize" style={{ color: hex }}>{c}</span>
+                {chessMode && <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>{c === 'red' ? '= White ♔' : '= Black ♚'}</span>}
                 {isSelected && <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>✓ You</span>}
               </button>
             )
@@ -819,6 +869,7 @@ function PreGameScreen({ gameId, defaultColor, onBack, onStart }: {
         {pendingStart && (
           <ColourPicker
             defaultColor={defaultColor}
+            chessMode={gameId === 'chess'}
             onConfirm={c => onStart(pendingStart.mode, pendingStart.diff, c)}
             onSkip={() => onStart(pendingStart.mode, pendingStart.diff, defaultColor)}
             onBack={() => setPendingStart(null)}
@@ -907,18 +958,25 @@ function TournamentSetup({ defaultColor, onBack, onStart }: {
         <p className="text-xs font-bold tracking-widest mb-3" style={{ color: 'var(--loft-muted)' }}>GAMES TO PLAY</p>
         <div className="space-y-2 mb-8">
           {TWO_PLAYER_DEFS.map(def => (
-            <button key={def.id} onClick={() => toggle(def.id)}
-              className="w-full flex items-center gap-3 p-3.5 rounded-2xl transition-all"
-              style={{
-                background: chosen.includes(def.id) ? 'rgba(59,158,255,0.1)' : 'var(--loft-card)',
-                border: `1.5px solid ${chosen.includes(def.id) ? 'rgba(59,158,255,0.35)' : 'rgba(255,255,255,0.07)'}`,
-              }}>
-              {chosen.includes(def.id)
-                ? <CheckSquare size={20} style={{ color: 'var(--loft-accent)', flexShrink: 0 }} />
-                : <Square size={20} style={{ color: 'var(--loft-faint)', flexShrink: 0 }} />}
-              <span className="text-lg flex-shrink-0">{def.emoji}</span>
-              <span className="font-bold text-sm flex-1 text-left" style={{ color: 'var(--loft-text)' }}>{def.name}</span>
-            </button>
+            <div key={def.id}>
+              <button onClick={() => toggle(def.id)}
+                className="w-full flex items-center gap-3 p-3.5 rounded-2xl transition-all"
+                style={{
+                  background: chosen.includes(def.id) ? 'rgba(59,158,255,0.1)' : 'var(--loft-card)',
+                  border: `1.5px solid ${chosen.includes(def.id) ? 'rgba(59,158,255,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                }}>
+                {chosen.includes(def.id)
+                  ? <CheckSquare size={20} style={{ color: 'var(--loft-accent)', flexShrink: 0 }} />
+                  : <Square size={20} style={{ color: 'var(--loft-faint)', flexShrink: 0 }} />}
+                <span className="text-lg flex-shrink-0">{def.emoji}</span>
+                <span className="font-bold text-sm flex-1 text-left" style={{ color: 'var(--loft-text)' }}>{def.name}</span>
+              </button>
+              {def.id === 'chess' && chosen.includes('chess') && (
+                <p className="text-xs px-3 pt-1 pb-0.5" style={{ color: '#f59e0b' }}>
+                  ⚠️ Chess games may take longer than other games in this tournament.
+                </p>
+              )}
+            </div>
           ))}
         </div>
 
