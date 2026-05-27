@@ -957,7 +957,10 @@ export default function Games() {
     setSection(s)
     const target = s === '2p' ? twoPRef.current : onePRef.current
     if (target && scrollRef.current) {
-      scrollRef.current.scrollTo({ top: target.offsetTop - 8, behavior: 'smooth' })
+      const containerTop = scrollRef.current.getBoundingClientRect().top
+      const targetTop = target.getBoundingClientRect().top
+      const newTop = scrollRef.current.scrollTop + targetTop - containerTop - 8
+      scrollRef.current.scrollTo({ top: Math.max(0, newTop), behavior: 'smooth' })
     }
   }
 

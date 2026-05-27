@@ -56,6 +56,9 @@ export interface UserProfile {
   id: 'main'
   gender: 'male' | 'female'
   bodyweightKg: number
+  heightCm?: number
+  dateOfBirth?: string   // 'YYYY-MM-DD'
+  units?: 'metric' | 'imperial'
   preferredColor?: 'red' | 'blue'
   updatedAt: string
 }

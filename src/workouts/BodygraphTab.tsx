@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { subDays } from 'date-fns'
-import { X, ChevronRight } from 'lucide-react'
+import { X, ChevronRight, Shield } from 'lucide-react'
 import { getWorkouts, getExercises, getUserProfile, getAllPersonalRecords } from '../db'
 import { computeRank, TIER_COLORS, TIERS } from './rankUtils'
 import ExerciseIcon from '../components/ExerciseIcon'
+import ProfileModal from './ProfileModal'
 import type { Exercise, PersonalRecord, UserProfile } from '../types'
 import type { Tier } from '../data/strengthStandards'
 
@@ -252,10 +253,10 @@ export default function BodygraphTab() {
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null)
   const [muscleDetailExs, setMuscleDetailExs] = useState<MuscleDetailEx[]>([])
   const [lastWorkout, setLastWorkout] = useState<{ date: string; muscleCount: number } | null>(null)
+  const [showProfileModal, setShowProfileModal] = useState(false)
 
-  useEffect(() => {
-    async function load() {
-      const [workouts, exList, prof, prs] = await Promise.all([
+  const load = useCallback(async () => {
+    const [workouts, exList, prof, prs] = await Promise.all([
         getWorkouts(), getExercises(), getUserProfile(), getAllPersonalRecords(),
       ])
       setExercises(exList)
@@ -325,9 +326,9 @@ export default function BodygraphTab() {
       }
       setRankColors(colors)
       setMuscleRanks(ranks)
-    }
-    load()
   }, [])
+
+  useEffect(() => { load() }, [load])
 
   function handleTapMuscle(muscleId: string) {
     setSelectedMuscle(muscleId)
@@ -425,16 +426,44 @@ export default function BodygraphTab() {
         </div>
       )}
 
-      {/* No profile prompt */}
+      {/* No profile — tappable CTA card */}
       {!hasProfile && (
-        <div
-          className="rounded-2xl px-4 py-3 border"
-          style={{ background: 'rgba(251,191,36,0.07)', borderColor: 'rgba(251,191,36,0.22)' }}
+        <button
+          onClick={() => setShowProfileModal(true)}
+          className="w-full rounded-2xl p-4 text-left"
+          style={{
+            background: 'rgba(6,182,212,0.07)',
+            border: '1.5px solid rgba(6,182,212,0.25)',
+            boxShadow: '0 0 20px rgba(6,182,212,0.08)',
+          }}
         >
-          <p className="text-xs font-medium" style={{ color: '#fbbf24' }}>
-            Set up your Strength Profile in the Tracker tab to see rank colours on each muscle.
-          </p>
-        </div>
+          <div className="flex items-start gap-3 mb-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(6,182,212,0.12)' }}
+            >
+              <Shield size={18} style={{ color: 'var(--loft-accent)' }} />
+            </div>
+            <div>
+              <p className="text-sm font-bold" style={{ color: 'var(--loft-text)' }}>
+                Set up your Strength Profile
+              </p>
+              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--loft-muted)' }}>
+                Add your bodyweight, height, age, and gender — required to rank your lifts
+              </p>
+            </div>
+          </div>
+          <div
+            className="w-full py-2.5 rounded-xl text-sm font-bold text-center"
+            style={{
+              background: 'linear-gradient(135deg, var(--loft-accent), var(--loft-accent2))',
+              boxShadow: '0 0 14px rgba(6,182,212,0.3)',
+              color: '#fff',
+            }}
+          >
+            SET UP PROFILE
+          </div>
+        </button>
       )}
 
       {/* Last workout card */}
@@ -598,6 +627,15 @@ export default function BodygraphTab() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Profile setup modal — triggered from the CTA card */}
+      <ProfileModal
+        isOpen={showProfileModal}
+        onClose={() => {
+          setShowProfileModal(false)
+          load()
+        }}
+      />
     </div>
   )
 }
