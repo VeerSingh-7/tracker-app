@@ -10,6 +10,7 @@ import MemoryMatch from '../games/MemoryMatch'
 import Wordle from '../games/Wordle'
 import WhackAMole from '../games/WhackAMole'
 import Sudoku from '../games/Sudoku'
+import Solitaire from '../games/Solitaire'
 import TicTacToe2P from '../games/twoplayer/TicTacToe2P'
 import PingPong2P from '../games/twoplayer/PingPong2P'
 import AirHockey2P from '../games/twoplayer/AirHockey2P'
@@ -18,7 +19,7 @@ import Archery2P from '../games/twoplayer/Archery2P'
 import Tennis2P from '../games/twoplayer/Tennis2P'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole' | 'sudoku'
+type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole' | 'sudoku' | 'solitaire'
 type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis'
 type TournamentPhase = 'game' | 'interstitial' | 'result'
 interface TournamentState {
@@ -43,6 +44,7 @@ const SOLO_DEFS = [
   { id: 'wordle' as SoloGameId, emoji: '🔤', name: 'Wordle', tagline: 'Guess the word' },
   { id: 'mole' as SoloGameId, emoji: '🐭', name: 'Whack-a-Mole', tagline: 'Whack as many as you can!' },
   { id: 'sudoku' as SoloGameId, emoji: '🔢', name: 'Sudoku', tagline: 'Fill the 9×9 grid' },
+  { id: 'solitaire' as SoloGameId, emoji: '🃏', name: 'Solitaire', tagline: 'Classic Klondike card game' },
 ]
 const TWO_PLAYER_DEFS: { id: TwoPlayerGameId; name: string; emoji: string; tagline: string }[] = [
   { id: 'tictactoe', name: 'Tic-Tac-Toe', emoji: '❌', tagline: 'Classic X vs O battle' },
@@ -59,7 +61,7 @@ const TWO_PLAYER_COMPONENTS = {
 } as const
 const SOLO_COMPONENTS = {
   '2048': Game2048, snake: Snake, memory: MemoryMatch, wordle: Wordle, mole: WhackAMole,
-  sudoku: Sudoku,
+  sudoku: Sudoku, solitaire: Solitaire,
 } as const
 
 // ─── SVG Illustrations ────────────────────────────────────────────────────────
@@ -481,9 +483,56 @@ function SudokuSvg() {
   )
 }
 
+function SolitaireSvg() {
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#solBg)" />
+      <defs>
+        <linearGradient id="solBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0d4a2a" /><stop offset="1" stopColor="#062a18" />
+        </linearGradient>
+      </defs>
+      {/* Face-down stock pile (top-left) */}
+      {[4,2,0].map(offset => (
+        <rect key={offset} x={12+offset} y={8+offset} width={28} height={40} rx={4}
+          fill="#1e3a5f" stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+      ))}
+      {/* Diamond pattern on top stock card */}
+      <line x1="14" y1="10" x2="38" y2="48" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+      <line x1="38" y1="10" x2="14" y2="48" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+      {/* Foundation piles (top-right) */}
+      {/* ♠ foundation with Ace */}
+      <rect x="144" y="8" width="24" height="34" rx="4" fill="white" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+      <text x="146" y="18" fontFamily="Inter,sans-serif" fontSize="8" fontWeight="800" fill="#111">A</text>
+      <text x="146" y="26" fontFamily="Inter,sans-serif" fontSize="8" fill="#111">♠</text>
+      {/* ♥ foundation with Ace */}
+      <rect x="172" y="8" width="24" height="34" rx="4" fill="white" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+      <text x="174" y="18" fontFamily="Inter,sans-serif" fontSize="8" fontWeight="800" fill="#dc2626">A</text>
+      <text x="174" y="26" fontFamily="Inter,sans-serif" fontSize="8" fill="#dc2626">♥</text>
+      {/* Tableau cascade - overlapping face-up cards */}
+      {/* Q♠ */}
+      <rect x="20" y="56" width="30" height="42" rx="4" fill="white" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+      <text x="22" y="66" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="800" fill="#111">Q♠</text>
+      <text x="38" y="93" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="800" fill="#111" textAnchor="end">Q♠</text>
+      {/* J♥ on Q♠ */}
+      <rect x="50" y="70" width="30" height="42" rx="4" fill="white" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+      <text x="52" y="80" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="800" fill="#dc2626">J♥</text>
+      {/* 10♠ on J♥ */}
+      <rect x="80" y="84" width="30" height="42" rx="4" fill="white" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+      <text x="82" y="94" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="800" fill="#111">10♠</text>
+      {/* 9♦ on 10♠ */}
+      <rect x="110" y="98" width="30" height="42" rx="4" fill="white" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+      <text x="112" y="108" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="800" fill="#dc2626">9♦</text>
+      {/* 8♠ on 9♦ */}
+      <rect x="140" y="112" width="30" height="42" rx="4" fill="white" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5"/>
+      <text x="142" y="122" fontFamily="Inter,sans-serif" fontSize="9" fontWeight="800" fill="#111">8♠</text>
+    </svg>
+  )
+}
+
 const SOLO_SVG_ILLUSTRATIONS: Record<SoloGameId, React.ComponentType> = {
   '2048': Game2048Svg, snake: SnakeSvg, memory: MemoryMatchSvg,
-  wordle: WordleSvg, mole: WhackAMoleSvg, sudoku: SudokuSvg,
+  wordle: WordleSvg, mole: WhackAMoleSvg, sudoku: SudokuSvg, solitaire: SolitaireSvg,
 }
 
 // ─── Solo Game Card ───────────────────────────────────────────────────────────
