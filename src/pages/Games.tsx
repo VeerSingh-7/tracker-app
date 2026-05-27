@@ -19,10 +19,11 @@ import Archery2P from '../games/twoplayer/Archery2P'
 import Tennis2P from '../games/twoplayer/Tennis2P'
 import PenaltyKicks2P from '../games/twoplayer/PenaltyKicks2P'
 import Chess2P from '../games/twoplayer/Chess2P'
+import Pool2P from '../games/twoplayer/Pool2P'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type SoloGameId = '2048' | 'snake' | 'memory' | 'wordle' | 'mole' | 'sudoku' | 'solitaire'
-type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis' | 'penalty' | 'chess'
+type TwoPlayerGameId = 'tictactoe' | 'pingpong' | 'airhockey' | 'flappyjump' | 'archery' | 'tennis' | 'penalty' | 'chess' | 'pool'
 type TournamentPhase = 'game' | 'interstitial' | 'result'
 interface TournamentState {
   mode: TwoPlayerMode; difficulty: AIDifficulty; p1Color: 'red' | 'blue'
@@ -57,11 +58,13 @@ const TWO_PLAYER_DEFS: { id: TwoPlayerGameId; name: string; emoji: string; tagli
   { id: 'tennis', name: 'Tennis', emoji: '🎾', tagline: 'First to 7 wins' },
   { id: 'penalty', name: 'Penalty Kicks', emoji: '⚽', tagline: '5 shots each, best wins' },
   { id: 'chess', name: 'Chess', emoji: '♟', tagline: 'Classic strategy game' },
+  { id: 'pool',  name: 'Pool (Physics Test)', emoji: '🎱', tagline: 'WIP — physics sandbox' },
 ]
 const TWO_PLAYER_COMPONENTS = {
   tictactoe: TicTacToe2P, pingpong: PingPong2P,
   airhockey: AirHockey2P, flappyjump: FlappyJump2P,
   archery: Archery2P, tennis: Tennis2P, penalty: PenaltyKicks2P, chess: Chess2P,
+  pool: Pool2P,
 } as const
 const SOLO_COMPONENTS = {
   '2048': Game2048, snake: Snake, memory: MemoryMatch, wordle: Wordle, mole: WhackAMole,
@@ -381,10 +384,49 @@ function ChessSvg() {
   )
 }
 
+function PoolSvg() {
+  const ballCols = ['#f5c518','#1d4ed8','#dc2626','#7c3aed','#ea580c','#15803d','#1a1a1a']
+  return (
+    <svg viewBox="0 0 200 156" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+      <rect width="200" height="156" rx="16" fill="url(#poolBg)" />
+      <defs>
+        <linearGradient id="poolBg" x1="0" y1="0" x2="200" y2="156" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#1a0d05" /><stop offset="1" stopColor="#0d0803" />
+        </linearGradient>
+      </defs>
+      {/* Rail */}
+      <rect x="8" y="8" width="184" height="140" rx="8" fill="#6b3a1f" />
+      {/* Felt */}
+      <rect x="22" y="22" width="156" height="112" rx="4" fill="#0a5a2a" />
+      {/* Head string */}
+      <line x1="24" y1="50" x2="176" y2="50" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" strokeDasharray="3,4" />
+      {/* Pockets */}
+      {[[22,22],[178,22],[22,78],[178,78],[22,134],[178,134]].map(([px,py],i) => (
+        <circle key={i} cx={px} cy={py} r="7" fill="#111" stroke="rgba(100,60,20,0.6)" strokeWidth="1.2" />
+      ))}
+      {/* Rack triangle */}
+      {[
+        [100,100], [93,113],[107,113],
+        [86,126],[100,126],[114,126],
+      ].map(([bx,by],i) => (
+        <circle key={i} cx={bx} cy={by} r="8.5" fill={ballCols[i % ballCols.length]}
+          stroke="rgba(0,0,0,0.4)" strokeWidth="0.8" />
+      ))}
+      {/* 8-ball in centre of row 2 */}
+      <circle cx="100" cy="126" r="8.5" fill="#1a1a1a" stroke="rgba(0,0,0,0.4)" strokeWidth="0.8" />
+      <circle cx="100" cy="126" r="4" fill="white" />
+      <text x="100" y="129" textAnchor="middle" fontFamily="Arial" fontSize="5" fontWeight="800" fill="#111">8</text>
+      {/* Cue ball */}
+      <circle cx="100" cy="42" r="8.5" fill="white" stroke="rgba(180,190,200,0.5)" strokeWidth="0.8" />
+    </svg>
+  )
+}
+
 const SVG_ILLUSTRATIONS: Record<TwoPlayerGameId, React.ComponentType> = {
   tictactoe: TicTacToeSvg, pingpong: PingPongSvg,
   airhockey: AirHockeySvg, flappyjump: FlappyJumpSvg,
-  archery: ArcherySvg, tennis: TennisSvg, penalty: PenaltyKicksSvg, chess: ChessSvg,
+  archery: ArcherySvg, tennis: TennisSvg, penalty: PenaltyKicksSvg,
+  chess: ChessSvg, pool: PoolSvg,
 }
 
 // ─── Solo SVG Illustrations ───────────────────────────────────────────────────
