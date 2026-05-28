@@ -1018,6 +1018,11 @@ function TournamentSetup({ defaultColor, onBack, onStart }: {
                   ⚠️ Chess games may take longer than other games in this tournament.
                 </p>
               )}
+              {def.id === 'pool' && chosen.includes('pool') && (
+                <p className="text-xs px-3 pt-1 pb-0.5" style={{ color: '#f59e0b' }}>
+                  ⚠️ Pool games can be long — consider playing solo or in shorter tournaments.
+                </p>
+              )}
             </div>
           ))}
         </div>
