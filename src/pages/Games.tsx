@@ -58,7 +58,7 @@ const TWO_PLAYER_DEFS: { id: TwoPlayerGameId; name: string; emoji: string; tagli
   { id: 'tennis', name: 'Tennis', emoji: '🎾', tagline: 'First to 7 wins' },
   { id: 'penalty', name: 'Penalty Kicks', emoji: '⚽', tagline: '5 shots each, best wins' },
   { id: 'chess', name: 'Chess', emoji: '♟', tagline: 'Classic strategy game' },
-  { id: 'pool',  name: 'Pool (Physics Test)', emoji: '🎱', tagline: 'WIP — physics sandbox' },
+  { id: 'pool',  name: 'Pool', emoji: '🎱', tagline: '8-ball billiards' },
 ]
 const TWO_PLAYER_COMPONENTS = {
   tictactoe: TicTacToe2P, pingpong: PingPong2P,
