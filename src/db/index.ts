@@ -1,7 +1,8 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { Workout, SpendingEntry, IncomeEntry, GameScore, Exercise, PersonalRecord, UserProgress, UserProfile, Routine, TournamentRecord } from '../types'
+import type { Workout, SpendingEntry, IncomeEntry, GameScore, Exercise, PersonalRecord, UserProgress, UserProfile, Routine, TournamentRecord, RevSubject, RevTopic, RevCard } from '../types'
 import { defaultExercises } from '../data/exercises'
 import { calcLevel } from '../workouts/utils'
+import { uid } from '../utils'
 
 interface TrackerDB {
   workouts: { key: string; value: Workout; indexes: { 'by-date': string } }
@@ -14,13 +15,32 @@ interface TrackerDB {
   userProfile: { key: string; value: UserProfile }
   routines: { key: string; value: Routine }
   tournaments: { key: string; value: TournamentRecord }
+  // Revision (stage 1)
+  revSubjects: { key: string; value: RevSubject }
+  revTopics: { key: string; value: RevTopic; indexes: { 'by-subject': string } }
+  revCards: { key: string; value: RevCard; indexes: { 'by-topic': string; 'by-subject': string } }
 }
+
+// Seed data for the Revision section — subjects + (where listed) topics. ZERO cards;
+// the user creates all flashcard content themselves.
+const REV_SEED: { name: string; examBoard: string; tier: string; colour: string; topics?: string[] }[] = [
+  { name: 'Biology',            examBoard: 'AQA',     tier: 'Higher', colour: '#22c55e' },
+  { name: 'Chemistry',          examBoard: 'AQA',     tier: 'Higher', colour: '#3b82f6' },
+  { name: 'Physics',            examBoard: 'AQA',     tier: 'Higher', colour: '#a855f7' },
+  { name: 'Maths',              examBoard: 'AQA',     tier: 'Higher', colour: '#ef4444' },
+  { name: 'Spanish',            examBoard: 'AQA',     tier: 'Higher', colour: '#f59e0b' },
+  { name: 'English Literature', examBoard: 'Edexcel', tier: '',       colour: '#ec4899',
+    topics: ['Power and Conflict Poetry Anthology', 'An Inspector Calls', 'Macbeth'] },
+  { name: 'Design & Technology: Graphics', examBoard: 'Edexcel', tier: '', colour: '#14b8a6' },
+  { name: 'Business',           examBoard: 'AQA',     tier: '',       colour: '#eab308' },
+  { name: 'Geography',          examBoard: 'AQA',     tier: '',       colour: '#06b6d4' },
+]
 
 let dbPromise: Promise<IDBPDatabase<TrackerDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<TrackerDB>('tracker-app', 9, {
+    dbPromise = openDB<TrackerDB>('tracker-app', 10, {
       async upgrade(db, oldVersion, _nv, transaction) {
         if (oldVersion < 1) {
           db.createObjectStore('workouts', { keyPath: 'id' }).createIndex('by-date', 'date')
@@ -80,6 +100,35 @@ function getDB() {
         if (oldVersion < 9) {
           if (!db.objectStoreNames.contains('tournaments')) {
             db.createObjectStore('tournaments', { keyPath: 'id' })
+          }
+        }
+        if (oldVersion < 10) {
+          // Revision (stage 1) — new stores only, existing stores untouched.
+          if (!db.objectStoreNames.contains('revSubjects')) {
+            db.createObjectStore('revSubjects', { keyPath: 'id' })
+          }
+          if (!db.objectStoreNames.contains('revTopics')) {
+            db.createObjectStore('revTopics', { keyPath: 'id' }).createIndex('by-subject', 'subjectId')
+          }
+          if (!db.objectStoreNames.contains('revCards')) {
+            const cardStore = db.createObjectStore('revCards', { keyPath: 'id' })
+            cardStore.createIndex('by-topic', 'topicId')
+            cardStore.createIndex('by-subject', 'subjectId')
+          }
+          // Seed subjects + listed topics once (no cards).
+          const now = new Date().toISOString()
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const subjStore = (transaction as any).objectStore('revSubjects')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const topicStore = (transaction as any).objectStore('revTopics')
+          for (const s of REV_SEED) {
+            const sid = uid()
+            await subjStore.put({ id: sid, name: s.name, examBoard: s.examBoard, tier: s.tier, colour: s.colour, createdAt: now })
+            if (s.topics) {
+              for (let i = 0; i < s.topics.length; i++) {
+                await topicStore.put({ id: uid(), subjectId: sid, name: s.topics[i], order: i, createdAt: now })
+              }
+            }
           }
         }
       },
@@ -226,6 +275,82 @@ export async function getAllTournaments(): Promise<TournamentRecord[]> {
   return (await getDB()).getAll('tournaments')
 }
 
+// ─── Revision: Subjects ─────────────────────────────────────────────────────
+export async function getRevSubjects(): Promise<RevSubject[]> {
+  const all = await (await getDB()).getAll('revSubjects')
+  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.name.localeCompare(b.name))
+}
+export async function saveRevSubject(s: RevSubject): Promise<void> {
+  await (await getDB()).put('revSubjects', s)
+}
+export async function deleteRevSubject(id: string): Promise<void> {
+  const db = await getDB()
+  const topics = await db.getAllFromIndex('revTopics', 'by-subject', id)
+  const cards = await db.getAllFromIndex('revCards', 'by-subject', id)
+  const tx = db.transaction(['revSubjects', 'revTopics', 'revCards'], 'readwrite')
+  await tx.objectStore('revSubjects').delete(id)
+  for (const t of topics) await tx.objectStore('revTopics').delete(t.id)
+  for (const c of cards) await tx.objectStore('revCards').delete(c.id)
+  await tx.done
+}
+
+// Per-subject {topics, cards} counts for the subject list (3 bulk reads).
+export async function getRevSubjectStats(): Promise<Record<string, { topics: number; cards: number }>> {
+  const db = await getDB()
+  const [subjects, topics, cards] = await Promise.all([
+    db.getAll('revSubjects'), db.getAll('revTopics'), db.getAll('revCards'),
+  ])
+  const stats: Record<string, { topics: number; cards: number }> = {}
+  for (const s of subjects) stats[s.id] = { topics: 0, cards: 0 }
+  for (const t of topics) if (stats[t.subjectId]) stats[t.subjectId].topics++
+  for (const c of cards) if (stats[c.subjectId]) stats[c.subjectId].cards++
+  return stats
+}
+
+// ─── Revision: Topics ───────────────────────────────────────────────────────
+export async function getRevTopics(subjectId: string): Promise<RevTopic[]> {
+  const all = await (await getDB()).getAllFromIndex('revTopics', 'by-subject', subjectId)
+  return all.sort((a, b) => a.order - b.order)
+}
+export async function saveRevTopic(t: RevTopic): Promise<void> {
+  await (await getDB()).put('revTopics', t)
+}
+export async function saveRevTopics(topics: RevTopic[]): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction('revTopics', 'readwrite')
+  for (const t of topics) await tx.store.put(t)
+  await tx.done
+}
+export async function deleteRevTopic(id: string): Promise<void> {
+  const db = await getDB()
+  const cards = await db.getAllFromIndex('revCards', 'by-topic', id)
+  const tx = db.transaction(['revTopics', 'revCards'], 'readwrite')
+  await tx.objectStore('revTopics').delete(id)
+  for (const c of cards) await tx.objectStore('revCards').delete(c.id)
+  await tx.done
+}
+
+// ─── Revision: Cards ────────────────────────────────────────────────────────
+export async function getRevCards(topicId: string): Promise<RevCard[]> {
+  const all = await (await getDB()).getAllFromIndex('revCards', 'by-topic', topicId)
+  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+export async function getRevCardsBySubject(subjectId: string): Promise<RevCard[]> {
+  return (await getDB()).getAllFromIndex('revCards', 'by-subject', subjectId)
+}
+export async function saveRevCard(c: RevCard): Promise<void> {
+  await (await getDB()).put('revCards', c)
+}
+export async function saveRevCards(cards: RevCard[]): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction('revCards', 'readwrite')
+  for (const c of cards) await tx.store.put(c)
+  await tx.done
+}
+export async function deleteRevCard(id: string): Promise<void> {
+  await (await getDB()).delete('revCards', id)
+}
+
 // Export / Import / Clear
 export async function exportAllData() {
   const db = await getDB()
@@ -240,6 +365,9 @@ export async function exportAllData() {
     userProfile: await db.getAll('userProfile'),
     routines: await db.getAll('routines'),
     tournaments: await db.getAll('tournaments'),
+    revSubjects: await db.getAll('revSubjects'),
+    revTopics: await db.getAll('revTopics'),
+    revCards: await db.getAll('revCards'),
   }
 }
 
@@ -254,9 +382,12 @@ export async function importAllData(data: {
   userProfile?: UserProfile[]
   routines?: Routine[]
   tournaments?: TournamentRecord[]
+  revSubjects?: RevSubject[]
+  revTopics?: RevTopic[]
+  revCards?: RevCard[]
 }) {
   const db = await getDB()
-  const stores = ['workouts', 'spending', 'income', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments'] as const
+  const stores = ['workouts', 'spending', 'income', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments', 'revSubjects', 'revTopics', 'revCards'] as const
   const tx = db.transaction(stores, 'readwrite')
   if (data.workouts) for (const w of data.workouts) await tx.objectStore('workouts').put(w)
   if (data.spending) for (const s of data.spending) await tx.objectStore('spending').put(s)
@@ -268,12 +399,15 @@ export async function importAllData(data: {
   if (data.userProfile) for (const p of data.userProfile) await tx.objectStore('userProfile').put(p)
   if (data.routines) for (const r of data.routines) await tx.objectStore('routines').put(r)
   if (data.tournaments) for (const t of data.tournaments) await tx.objectStore('tournaments').put(t)
+  if (data.revSubjects) for (const s of data.revSubjects) await tx.objectStore('revSubjects').put(s)
+  if (data.revTopics) for (const t of data.revTopics) await tx.objectStore('revTopics').put(t)
+  if (data.revCards) for (const c of data.revCards) await tx.objectStore('revCards').put(c)
   await tx.done
 }
 
 export async function clearAllData() {
   const db = await getDB()
-  const stores = ['workouts', 'spending', 'income', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments'] as const
+  const stores = ['workouts', 'spending', 'income', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments', 'revSubjects', 'revTopics', 'revCards'] as const
   const tx = db.transaction(stores, 'readwrite')
   await tx.objectStore('workouts').clear()
   await tx.objectStore('spending').clear()
@@ -285,5 +419,8 @@ export async function clearAllData() {
   await tx.objectStore('userProfile').clear()
   await tx.objectStore('routines').clear()
   await tx.objectStore('tournaments').clear()
+  await tx.objectStore('revSubjects').clear()
+  await tx.objectStore('revTopics').clear()
+  await tx.objectStore('revCards').clear()
   await tx.done
 }

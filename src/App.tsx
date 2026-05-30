@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Workouts from './pages/Workouts'
 import Money from './pages/Money'
 import Games from './pages/Games'
+import Revision from './pages/Revision'
 import Settings from './pages/Settings'
 import type { Tab } from './types'
 
@@ -40,6 +41,7 @@ export default function App() {
               {tab === 'workouts' && <Workouts />}
               {tab === 'money'    && <Money />}
               {tab === 'games'    && <Games />}
+              {tab === 'revision' && <Revision />}
             </motion.div>
           </AnimatePresence>
           <TabBar activeTab={tab} onTabChange={setTab} />

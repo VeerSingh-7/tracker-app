@@ -156,5 +156,39 @@ export interface TournamentRecord {
   winner: 'p1' | 'p2' | 'draw'
 }
 
-export type Tab = 'dashboard' | 'workouts' | 'money' | 'games'
+// ─── Revision (study tool) ──────────────────────────────────────────────────
+export interface RevSubject {
+  id: string
+  name: string
+  examBoard: string      // e.g. 'AQA', 'Edexcel'
+  tier: string           // 'Higher' | 'Foundation' | '' (no tier)
+  colour: string         // hex accent colour
+  createdAt: string
+}
+
+export interface RevTopic {
+  id: string
+  subjectId: string
+  name: string
+  order: number
+  createdAt: string
+}
+
+export interface RevCard {
+  id: string
+  topicId: string
+  subjectId: string
+  front: string
+  back: string
+  createdAt: string
+  // ── Review-tracking fields ──
+  // Initialised here but NOT used in stage 1. Stage 2 (quizzes) and stage 3
+  // (spaced repetition) will read/write these. Do not wire them up yet.
+  lastReviewed: string | null
+  timesReviewed: number
+  timesCorrect: number
+  timesWrong: number
+}
+
+export type Tab = 'dashboard' | 'workouts' | 'money' | 'games' | 'revision'
 export type WorkoutSubTab = 'tracker' | 'library' | 'progress' | 'bodygraph' | 'achievements' | 'quest' | 'history' | 'shop'

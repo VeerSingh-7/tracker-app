@@ -1,4 +1,4 @@
-import { LayoutDashboard, Dumbbell, Wallet, Gamepad2 } from 'lucide-react'
+import { LayoutDashboard, Dumbbell, Wallet, Gamepad2, GraduationCap } from 'lucide-react'
 import type { Tab } from '../types'
 
 const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string; style?: React.CSSProperties }> }[] = [
@@ -6,6 +6,7 @@ const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number;
   { id: 'workouts',  label: 'Workouts', icon: Dumbbell },
   { id: 'money',     label: 'Money',    icon: Wallet },
   { id: 'games',     label: 'Games',    icon: Gamepad2 },
+  { id: 'revision',  label: 'Revision', icon: GraduationCap },
 ]
 
 interface Props {
