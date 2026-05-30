@@ -4,6 +4,7 @@ import { saveRevCards } from '../db'
 import { uid } from '../utils'
 import type { RevSubject, RevTopic, RevCard } from '../types'
 import RevHeader from './RevHeader'
+import CardMetaFields, { type CardMeta } from './CardMetaFields'
 import { PARSE_FORMATS, parseNotes, type ParseFormat, type DraftCard } from './shared'
 
 export default function PasteSplit({ subject, topic, onBack, onDone }: {
@@ -15,6 +16,8 @@ export default function PasteSplit({ subject, topic, onBack, onDone }: {
   const [text, setText] = useState('')
   const [format, setFormat] = useState<ParseFormat>('qa')
   const [drafts, setDrafts] = useState<DraftCard[] | null>(null)
+  // Optional metadata applied to ALL cards added from this batch.
+  const [meta, setMeta] = useState<CardMeta>({ cardType: 'basic', themes: [], location: '', reversible: false })
 
   const split = () => {
     setDrafts(parseNotes(text, format))
@@ -39,6 +42,11 @@ export default function PasteSplit({ subject, topic, onBack, onDone }: {
       front: d.front.trim(),
       back: d.back.trim(),
       createdAt: now,
+      // Batch metadata (still reformatting only — content comes from the paste).
+      cardType: meta.cardType,
+      themes: meta.themes,
+      location: meta.location.trim(),
+      reversible: meta.reversible,
       // Review-tracking fields — initialised, used in later stages.
       lastReviewed: null,
       timesReviewed: 0,
@@ -136,6 +144,15 @@ export default function PasteSplit({ subject, topic, onBack, onDone }: {
                         style={{ background: 'var(--loft-bg2)', border: '1px solid var(--loft-border)', color: 'var(--loft-muted)' }} />
                     </div>
                   ))}
+
+                  {/* Optional metadata applied to every card in this batch */}
+                  <div className="rounded-2xl p-3 space-y-4" style={{ background: 'var(--loft-card)', border: '1px solid var(--loft-border)' }}>
+                    <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--loft-muted)' }}>
+                      Apply to all these cards (optional)
+                    </p>
+                    <CardMetaFields meta={meta} onChange={p => setMeta(m => ({ ...m, ...p }))} accent={subject.colour} showReversible={false} />
+                  </div>
+
                   <button onClick={addAll}
                     className="w-full py-3.5 rounded-2xl font-bold text-sm text-white"
                     style={{ background: subject.colour }}>

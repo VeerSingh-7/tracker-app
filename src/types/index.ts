@@ -174,6 +174,8 @@ export interface RevTopic {
   createdAt: string
 }
 
+export type RevCardType = 'quote_analysis' | 'theme_quotes' | 'character_arc' | 'term_definition' | 'basic'
+
 export interface RevCard {
   id: string
   topicId: string
@@ -181,8 +183,13 @@ export interface RevCard {
   front: string
   back: string
   createdAt: string
+  // ── Richer card model (DB v11) ──
+  cardType: RevCardType    // default 'basic'
+  themes: string[]         // e.g. ['ambition','guilt'] — default []
+  location: string         // e.g. 'Act 1 Scene 5', 'Ozymandias', '' — default ''
+  reversible: boolean      // study back→front too — default false
   // ── Review-tracking fields ──
-  // Initialised here but NOT used in stage 1. Stage 2 (quizzes) and stage 3
+  // Initialised here but NOT used yet. Stage 2 (quizzes) and stage 3
   // (spaced repetition) will read/write these. Do not wire them up yet.
   lastReviewed: string | null
   timesReviewed: number

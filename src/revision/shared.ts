@@ -1,3 +1,43 @@
+import type { RevCardType, RevCard } from '../types'
+
+// ─── Card types (DB v11) ──────────────────────────────────────────────────────
+export const CARD_TYPES: { value: RevCardType; label: string; hint: string }[] = [
+  { value: 'basic',           label: 'Basic',            hint: 'Plain front / back' },
+  { value: 'term_definition', label: 'Term & Definition', hint: 'Key term and its meaning' },
+  { value: 'quote_analysis',  label: 'Quote & Analysis',  hint: 'Quote on front, analysis on back' },
+  { value: 'theme_quotes',    label: 'Theme Quotes',      hint: 'Quote that evidences a theme' },
+  { value: 'character_arc',   label: 'Character Arc',     hint: 'A character moment / development' },
+]
+export const CARD_TYPE_LABEL: Record<RevCardType, string> =
+  Object.fromEntries(CARD_TYPES.map(t => [t.value, t.label])) as Record<RevCardType, string>
+
+// Quote-style cards render the front as a prominent quotation in study mode.
+export function isQuoteCard(t: RevCardType): boolean {
+  return t === 'quote_analysis' || t === 'theme_quotes'
+}
+
+// Parse comma-separated theme input into a clean, de-duplicated list.
+export function parseThemes(input: string): string[] {
+  const out: string[] = []
+  for (const raw of input.split(',')) {
+    const t = raw.trim()
+    if (t && !out.some(x => x.toLowerCase() === t.toLowerCase())) out.push(t)
+  }
+  return out
+}
+
+// Distinct themes / locations present across a set of cards (for filter bars).
+export function distinctThemes(cards: RevCard[]): string[] {
+  const map = new Map<string, string>()
+  for (const c of cards) for (const t of c.themes ?? []) { const k = t.toLowerCase(); if (!map.has(k)) map.set(k, t) }
+  return [...map.values()].sort((a, b) => a.localeCompare(b))
+}
+export function distinctLocations(cards: RevCard[]): string[] {
+  const map = new Map<string, string>()
+  for (const c of cards) { const l = (c.location ?? '').trim(); if (l) { const k = l.toLowerCase(); if (!map.has(k)) map.set(k, l) } }
+  return [...map.values()].sort((a, b) => a.localeCompare(b))
+}
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 export const SUBJECT_COLOURS = [
   '#22c55e', '#3b82f6', '#a855f7', '#ef4444', '#f59e0b', '#ec4899',

@@ -8,7 +8,7 @@ import { uid } from '../utils'
 import type { RevSubject, RevTopic } from '../types'
 import { SUBJECT_COLOURS, EXAM_BOARDS, TIERS, boardTierLabel } from '../revision/shared'
 import TopicList from '../revision/TopicList'
-import CardList from '../revision/CardList'
+import CardList, { type StudyFilter } from '../revision/CardList'
 import PasteSplit from '../revision/PasteSplit'
 import StudyMode from '../revision/StudyMode'
 
@@ -17,7 +17,7 @@ type View =
   | { screen: 'subjects' }
   | { screen: 'topics'; subject: RevSubject }
   | { screen: 'cards'; subject: RevSubject; topic: RevTopic }
-  | { screen: 'study'; subject: RevSubject; topic: RevTopic }
+  | { screen: 'study'; subject: RevSubject; topic: RevTopic; filter: StudyFilter }
   | { screen: 'paste'; subject: RevSubject; topic: RevTopic }
 
 export default function Revision() {
@@ -94,14 +94,14 @@ export default function Revision() {
         subject={view.subject}
         topic={view.topic}
         onBack={() => setView({ screen: 'topics', subject: view.subject })}
-        onStudy={() => setView({ screen: 'study', subject: view.subject, topic: view.topic })}
+        onStudy={filter => setView({ screen: 'study', subject: view.subject, topic: view.topic, filter })}
         onPaste={() => setView({ screen: 'paste', subject: view.subject, topic: view.topic })}
       />
     )
   }
   if (view.screen === 'study') {
     return (
-      <StudyMode subject={view.subject} topic={view.topic}
+      <StudyMode subject={view.subject} topic={view.topic} filter={view.filter}
         onBack={() => setView({ screen: 'cards', subject: view.subject, topic: view.topic })} />
     )
   }

@@ -40,7 +40,7 @@ let dbPromise: Promise<IDBPDatabase<TrackerDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<TrackerDB>('tracker-app', 10, {
+    dbPromise = openDB<TrackerDB>('tracker-app', 11, {
       async upgrade(db, oldVersion, _nv, transaction) {
         if (oldVersion < 1) {
           db.createObjectStore('workouts', { keyPath: 'id' }).createIndex('by-date', 'date')
@@ -128,6 +128,25 @@ function getDB() {
               for (let i = 0; i < s.topics.length; i++) {
                 await topicStore.put({ id: uid(), subjectId: sid, name: s.topics[i], order: i, createdAt: now })
               }
+            }
+          }
+        }
+        if (oldVersion < 11) {
+          // Richer card model — backfill new fields on existing cards (additive).
+          // Subjects, topics and all existing card content are preserved.
+          if (db.objectStoreNames.contains('revCards')) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const cardStore = (transaction as any).objectStore('revCards')
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const allCards = await cardStore.getAll() as any[]
+            for (const c of allCards) {
+              await cardStore.put({
+                ...c,
+                cardType: c.cardType ?? 'basic',
+                themes: c.themes ?? [],
+                location: c.location ?? '',
+                reversible: c.reversible ?? false,
+              })
             }
           }
         }
