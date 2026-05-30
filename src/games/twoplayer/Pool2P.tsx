@@ -14,6 +14,13 @@ const MAX_SHOT_SPEED       = MAX_SPEED * 0.92
 const TURN_CHANGE_FRAMES   = 90
 const GROUP_OVERLAY_FRAMES = 120
 
+// ─── Cue strike animation (Bug 4) ──────────────────────────────────────────────
+// ~400ms total at 60fps: pull back ~200ms, forward strike ~120ms, hold ~80ms.
+const STRIKE_PULLBACK = 12              // frames pulling away from the ball
+const STRIKE_FORWARD  = 7               // frames driving forward into the ball
+const STRIKE_HOLD     = 5               // frames the cue lingers after contact
+const STRIKE_CONTACT  = STRIKE_PULLBACK + STRIKE_FORWARD  // velocity applied here
+
 // ─── Ball colours ─────────────────────────────────────────────────────────────
 const BALL_COLOR: Record<number, string> = {
   0:'#f5f5f0',1:'#f5c518',2:'#1d4ed8',3:'#dc2626',4:'#7c3aed',
@@ -38,7 +45,7 @@ interface Ball { id:number; x:number; y:number; vx:number; vy:number; r:number; 
 interface Pocket { x:number; y:number; r:number }
 interface AiShot { aimAngle:number; power:number; score:number }
 
-type GamePhase = 'aiming'|'shooting'|'resolving'|'turnChange'|'ballInHand'|'gameOver'
+type GamePhase = 'aiming'|'striking'|'shooting'|'resolving'|'turnChange'|'ballInHand'|'gameOver'
 type BallGroup = 'solids'|'stripes'
 
 interface PoolState {
@@ -65,6 +72,9 @@ interface PoolState {
   aiThinking:boolean; aiThinkTimer:number
   aiShot:AiShot|null; aiAnimTimer:number; aiStartAngle:number
   aiPlacement:{x:number;y:number}|null
+  // Cue strike animation (Bug 4)
+  strikeFrame:number; strikeShot:{angle:number;power:number}|null
+  cueHoldFrame:number; strikeCueX:number; strikeCueY:number; strikeAngle:number
 }
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
@@ -124,6 +134,7 @@ function buildState(W:number, H:number): PoolState {
     ballInHandRestricted:false,ballInHandDragging:false,
     gameOver:false,winner:null,gameOverMsg:'',
     aiThinking:false,aiThinkTimer:0,aiShot:null,aiAnimTimer:0,aiStartAngle:0,aiPlacement:null,
+    strikeFrame:0,strikeShot:null,cueHoldFrame:0,strikeCueX:0,strikeCueY:0,strikeAngle:0,
   }
 }
 
@@ -226,6 +237,50 @@ function resetToBreak(s:PoolState){
   s.turnChangeTimer=TURN_CHANGE_FRAMES;s.phase='turnChange';s.groupOverlayTimer=0
   s.aimAngle=Math.PI/2;s.aimPower=0.55;s.aimDragging=false;s.powerDragging=false
   s.aiThinking=false;s.aiThinkTimer=0;s.aiShot=null;s.aiAnimTimer=0;s.aiPlacement=null
+  s.strikeFrame=0;s.strikeShot=null;s.cueHoldFrame=0
+}
+
+// ─── Cue strike (shared by human + AI) ──────────────────────────────────────────
+// Begin the pull-back/strike animation for a committed shot. Velocity is applied
+// later, at the contact frame, in applyStrike().
+function beginStrike(s:PoolState,angle:number,power:number){
+  s.aimAngle=angle;s.aimPower=power
+  s.strikeShot={angle,power}
+  s.strikeFrame=0
+  s.phase='striking'
+}
+
+// Apply the committed shot's velocity to the cue ball at the contact frame and
+// hand off to the physics simulation. Identical effect for human and AI shots.
+function applyStrike(s:PoolState){
+  const cue=s.balls.find(b=>b.id===0)
+  const shot=s.strikeShot??{angle:s.aimAngle,power:0.45}
+  s.strikeCueX=cue?cue.x:s.spotX;s.strikeCueY=cue?cue.y:s.centreSpotY;s.strikeAngle=shot.angle
+  if(cue){
+    const speed=Math.max(0.08,shot.power)*MAX_SHOT_SPEED
+    cue.vx=Math.cos(shot.angle)*speed;cue.vy=Math.sin(shot.angle)*speed
+  }
+  s.phase='shooting';s.pottedThisTurn=[];s.cuePottedThisTurn=false
+  s.firstBallHitId=null;s.railContactAfterHit=false;s.cushionsHitOnBreak=[];s.foulReason=null
+  const sg=s.turn===1?s.p1Group:s.p2Group
+  s.wasOnEightAtShotStart=!s.tableOpen&&sg!==null&&countBallsLeft(s,sg)===0
+  s.cueHoldFrame=STRIKE_HOLD;s.strikeShot=null
+}
+
+// Cue-stick pull distance (tip distance behind cue centre) during the strike.
+function strikePullDist(frame:number,power:number,r:number){
+  const restPull=r*1.2+power*r*2
+  const backPull=restPull+power*r*7
+  const contactPull=r*0.9
+  if(frame<STRIKE_PULLBACK){
+    const t=frame/STRIKE_PULLBACK,ease=1-(1-t)*(1-t)   // ease-out drawing back
+    return restPull+(backPull-restPull)*ease
+  }
+  if(frame<STRIKE_CONTACT){
+    const t=(frame-STRIKE_PULLBACK)/STRIKE_FORWARD,ease=t*t  // ease-in striking
+    return backPull+(contactPull-backPull)*ease
+  }
+  return contactPull
 }
 
 function detectFoul(s:PoolState,fh:number|null,onEight:boolean,sg:BallGroup|null,ncp:number[]):FoulReason|null{
@@ -481,7 +536,12 @@ function drawAimSystem(ctx:CanvasRenderingContext2D,s:PoolState,cue:Ball){
   ctx.setLineDash([7,6]);ctx.strokeStyle='rgba(255,255,255,0.30)';ctx.lineWidth=1.5
   ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([])
   if(ballId!==null){ctx.beginPath();ctx.arc(ex,ey,r,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,0.12)';ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=1;ctx.stroke()}
-  const pull=r*1.2+aimPower*r*2,sl=r*7.5
+  drawCue(ctx,cx,cy,aimAngle,r*1.2+aimPower*r*2,r)
+}
+
+// Draws the cue stick with its tip `pull` px behind (cx,cy) along the aim angle.
+function drawCue(ctx:CanvasRenderingContext2D,cx:number,cy:number,angle:number,pull:number,r:number){
+  const dx=Math.cos(angle),dy=Math.sin(angle),sl=r*7.5
   const tx=cx-dx*pull,ty=cy-dy*pull,bx=tx-dx*sl,by=ty-dy*sl
   const tw=r*0.12,bw=r*0.4,px=-dy,py=dx
   ctx.beginPath();ctx.moveTo(tx+px*tw,ty+py*tw);ctx.lineTo(tx-px*tw,ty-py*tw);ctx.lineTo(bx-px*bw,by-py*bw);ctx.lineTo(bx+px*bw,by+py*bw);ctx.closePath()
@@ -570,12 +630,7 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
   const handleShoot=useCallback(()=>{
     const s=stateRef.current;if(!s||s.phase!=='aiming')return
     const cue=s.balls.find(b=>b.id===0);if(!cue)return
-    const speed=Math.max(0.08,s.aimPower)*MAX_SHOT_SPEED
-    cue.vx=Math.cos(s.aimAngle)*speed;cue.vy=Math.sin(s.aimAngle)*speed
-    s.phase='shooting';s.pottedThisTurn=[];s.cuePottedThisTurn=false
-    s.firstBallHitId=null;s.railContactAfterHit=false;s.cushionsHitOnBreak=[];s.foulReason=null
-    const sg=s.turn===1?s.p1Group:s.p2Group
-    s.wasOnEightAtShotStart=!s.tableOpen&&sg!==null&&countBallsLeft(s,sg)===0
+    beginStrike(s,s.aimAngle,s.aimPower)
     triggerUi()
   },[triggerUi])
 
@@ -612,10 +667,13 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
   const isAiTurn=isAiMode&&turn===2
   void tick
 
-  const phaseLabel=phase==='aiming'?(isBreak?'🎱 BREAK':'AIMING')
-    :phase==='shooting'||phase==='resolving'?'⏳ IN MOTION'
-    :phase==='ballInHand'?'✋ BALL IN HAND'
-    :phase==='gameOver'?'🏆 GAME OVER':'NEXT PLAYER'
+  // Single compact status badge — folds turn, table/group state, foul, ball-in-hand and AI status.
+  const curGroup=turn===1?p1Group:p2Group
+  const tableState=!tableOpen&&curGroup?curGroup.toUpperCase():tableOpen?'OPEN':''
+  const turnText=isAiMode?(turn===1?(isBreak?'Your Break':'Your Turn'):(aiThinking?'AI lining up…':'AI playing…')):(isBreak?`P${turn} Break`:`P${turn}'s Turn`)
+  const statusBadge=foulReason?`⚠ ${FOUL_TEXT[foulReason]}`
+    :phase==='ballInHand'?(isAiTurn?'AI placing ball…':bihRestricted?'✋ Place in kitchen':'✋ Place cue ball')
+    :`${turnText}${tableState?` · ${tableState}`:''}${curOnEight&&(phase==='aiming'||phase==='striking')?' · 🎱8':''}`
 
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas)return
@@ -641,16 +699,16 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
       const onTouchStart=(e:TouchEvent)=>{
         e.preventDefault();const s=stateRef.current;if(!s)return
         const t=e.changedTouches[0],tx=t.clientX-rect.left,ty=t.clientY-rect.top
-        if(s.phase==='ballInHand'&&!isAiTurn){s.ballInHandDragging=true;moveCueBallInHand(s,tx,ty);return}
-        if(s.phase!=='aiming'||isAiTurn)return
+        if(s.phase==='ballInHand'&&!(mode==='ai'&&s.turn===2)){s.ballInHandDragging=true;moveCueBallInHand(s,tx,ty);return}
+        if(s.phase!=='aiming'||(mode==='ai'&&s.turn===2))return
         if(tx>powerZoneX){s.powerDragging=true;s.powerTouchStartY=ty;s.powerAtDragStart=s.aimPower}
         else{s.aimDragging=true;const cue=s.balls.find(b=>b.id===0);if(cue)s.aimAngle=Math.atan2(ty-cue.y,tx-cue.x)}
       }
       const onTouchMove=(e:TouchEvent)=>{
         e.preventDefault();const s=stateRef.current;if(!s)return
         const t=e.changedTouches[0],tx=t.clientX-rect.left,ty=t.clientY-rect.top
-        if(s.phase==='ballInHand'&&s.ballInHandDragging&&!isAiTurn){moveCueBallInHand(s,tx,ty);return}
-        if(s.phase!=='aiming'||isAiTurn)return
+        if(s.phase==='ballInHand'&&s.ballInHandDragging&&!(mode==='ai'&&s.turn===2)){moveCueBallInHand(s,tx,ty);return}
+        if(s.phase!=='aiming'||(mode==='ai'&&s.turn===2))return
         if(s.powerDragging){const dy=(s.powerTouchStartY-ty)/(H*0.5);s.aimPower=Math.max(0,Math.min(1,s.powerAtDragStart+dy))}
         else if(s.aimDragging){const cue=s.balls.find(b=>b.id===0);if(cue)s.aimAngle=Math.atan2(ty-cue.y,tx-cue.x)}
       }
@@ -662,16 +720,16 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
       const onMouseDown=(e:MouseEvent)=>{
         const s=stateRef.current;if(!s)return;md=true
         const mx=e.clientX-rect.left,my=e.clientY-rect.top
-        if(s.phase==='ballInHand'&&!isAiTurn){s.ballInHandDragging=true;moveCueBallInHand(s,mx,my);return}
-        if(s.phase!=='aiming'||isAiTurn)return
+        if(s.phase==='ballInHand'&&!(mode==='ai'&&s.turn===2)){s.ballInHandDragging=true;moveCueBallInHand(s,mx,my);return}
+        if(s.phase!=='aiming'||(mode==='ai'&&s.turn===2))return
         if(mx>powerZoneX){s.powerDragging=true;s.powerTouchStartY=my;s.powerAtDragStart=s.aimPower}
         else{s.aimDragging=true;const cue=s.balls.find(b=>b.id===0);if(cue)s.aimAngle=Math.atan2(my-cue.y,mx-cue.x)}
       }
       const onMouseMove=(e:MouseEvent)=>{
         if(!md)return;const s=stateRef.current;if(!s)return
         const mx=e.clientX-rect.left,my=e.clientY-rect.top
-        if(s.phase==='ballInHand'&&s.ballInHandDragging&&!isAiTurn){moveCueBallInHand(s,mx,my);return}
-        if(s.phase!=='aiming'||isAiTurn)return
+        if(s.phase==='ballInHand'&&s.ballInHandDragging&&!(mode==='ai'&&s.turn===2)){moveCueBallInHand(s,mx,my);return}
+        if(s.phase!=='aiming'||(mode==='ai'&&s.turn===2))return
         if(s.powerDragging){const dy=(s.powerTouchStartY-my)/(H*0.5);s.aimPower=Math.max(0,Math.min(1,s.powerAtDragStart+dy))}
         else if(s.aimDragging){const cue=s.balls.find(b=>b.id===0);if(cue)s.aimAngle=Math.atan2(my-cue.y,mx-cue.x)}
       }
@@ -690,6 +748,7 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
         // AI turn handling
         if(mode==='ai'&&s.turn===2&&s.phase==='aiming'){
           if(!s.aiThinking){
+            // Step 1: turn detection + shot computation
             s.aiThinking=true
             s.aiThinkTimer=Math.round(
               difficulty==='easy'?40+Math.random()*40:
@@ -697,10 +756,12 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
               60+Math.random()*70)
             s.aiShot=computeAiShot(s,difficulty)
             s.aiStartAngle=s.aimAngle;s.aiAnimTimer=0
+            console.log(`[Pool AI] turn detected (${difficulty}) → computed shot`,s.aiShot)
             triggerUi()
           } else if(s.aiThinkTimer>0){
             s.aiThinkTimer--;if(s.aiThinkTimer===0)triggerUi()
           } else if(s.aiAnimTimer<28){
+            // Step 2: animate the cue toward the chosen aim angle
             s.aiAnimTimer++
             const t=s.aiAnimTimer/28,ease=t<0.5?2*t*t:-1+(4-2*t)*t
             const target=s.aiShot?.aimAngle??s.aimAngle
@@ -709,19 +770,11 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
             s.aimAngle=s.aiStartAngle+diff2*ease
             s.aimPower=s.aiShot?.power??0.5
           } else {
-            // Fire AI shot
-            const cue=s.balls.find(b=>b.id===0)
-            if(cue){
-              const shot=s.aiShot??{aimAngle:s.aimAngle,power:0.45}
-              s.aimAngle=shot.aimAngle;s.aimPower=shot.power
-              const spd=Math.max(0.08,shot.power)*MAX_SHOT_SPEED
-              cue.vx=Math.cos(shot.aimAngle)*spd;cue.vy=Math.sin(shot.aimAngle)*spd
-              s.phase='shooting';s.pottedThisTurn=[];s.cuePottedThisTurn=false
-              s.firstBallHitId=null;s.railContactAfterHit=false;s.cushionsHitOnBreak=[];s.foulReason=null
-              const sg=s.p2Group
-              s.wasOnEightAtShotStart=!s.tableOpen&&sg!==null&&countBallsLeft(s,sg)===0
-              s.aiThinking=false;s.aiThinkTimer=0;s.aiAnimTimer=0;s.aiShot=null
-            }
+            // Step 3: execute the shot through the same strike path as the human
+            const shot=s.aiShot??{aimAngle:s.aimAngle,power:0.45}
+            s.aiThinking=false;s.aiThinkTimer=0;s.aiAnimTimer=0;s.aiShot=null
+            console.log('[Pool AI] executing shot',shot)
+            beginStrike(s,shot.aimAngle,shot.power)
             triggerUi()
           }
         }
@@ -744,12 +797,18 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
           }
         }
 
-        if(s.phase==='shooting'||s.phase==='resolving'){
+        if(s.phase==='striking'){
+          // Pull-back / strike animation; velocity is applied at the contact frame.
+          s.strikeFrame++
+          if(s.strikeFrame>=STRIKE_CONTACT)applyStrike(s)
+        } else if(s.phase==='shooting'||s.phase==='resolving'){
           updatePhysics(s)
+          if(s.cueHoldFrame>0)s.cueHoldFrame--
           for(const b of s.balls){const spd=Math.sqrt(b.vx*b.vx+b.vy*b.vy);b.spin+=(spd/b.r)*0.4}
           if(s.phase==='shooting')s.phase='resolving'
           if(allStopped(s)){
-            s.aiThinking=false;s.aiThinkTimer=0;s.aiAnimTimer=0;s.aiShot=null
+            s.aiThinking=false;s.aiThinkTimer=0;s.aiAnimTimer=0;s.aiShot=null;s.cueHoldFrame=0
+            if(mode==='ai'&&s.turn===2)console.log('[Pool AI] shot resolved — potted:',[...s.pottedThisTurn])
             resolveTurn(s,triggerUi,onGameEndRef.current)
           }
         } else if(s.phase==='turnChange'){
@@ -772,6 +831,14 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
         ctx.clearRect(0,0,W,H);drawTable(ctx,s)
         if(s.phase==='ballInHand'&&s.ballInHandRestricted)drawKitchen(ctx,s)
         if(s.phase==='aiming'){const cue=s.balls.find(b=>b.id===0);if(cue)drawAimSystem(ctx,s,cue)}
+        if(s.phase==='striking'){
+          const cue=s.balls.find(b=>b.id===0)
+          if(cue&&s.strikeShot)drawCue(ctx,cue.x,cue.y,s.strikeShot.angle,strikePullDist(s.strikeFrame,s.strikeShot.power,cue.r),cue.r)
+        }
+        // Follow-through: cue lingers at the strike point for a few frames after contact.
+        if(s.cueHoldFrame>0){
+          drawCue(ctx,s.strikeCueX,s.strikeCueY,s.strikeAngle,s.ballR*0.9,s.ballR)
+        }
         for(const b of s.balls){
           if(s.phase==='ballInHand'&&b.id===0&&!(mode==='ai'&&s.turn===2)){
             const valid=isValidCuePlacement(s,b.x,b.y)
@@ -796,60 +863,30 @@ export default function Pool2P({mode='2p',difficulty='medium',p1Color='red',onBa
 
   return(
     <div className="h-full flex flex-col" style={{background:'#2a1a0a'}}>
-      {/* Header */}
+      {/* Header — single compact row (fits --game-header-h) */}
       <div className="flex-shrink-0"
         style={{paddingTop:'env(safe-area-inset-top)',background:'rgba(26,14,4,0.97)',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
-        <div className="flex items-center gap-2 px-3 py-2">
-          <button onClick={onBack} className="p-2 rounded-xl" style={{background:'rgba(255,255,255,0.08)'}}>
+        <div className="flex items-center gap-2 px-3 py-2 min-w-0">
+          <button onClick={onBack} className="p-1.5 rounded-xl flex-shrink-0" style={{background:'rgba(255,255,255,0.08)'}}>
             <ChevronLeft size={20} className="text-white"/>
           </button>
-          <span className="text-base font-bold text-white">Pool</span>
-          <span className="text-xs px-2 py-0.5 rounded-full"
-            style={{background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.45)'}}>
-            {phaseLabel}
+          <span className="text-base font-bold text-white flex-shrink-0">Pool</span>
+          {/* Status badge: turn + table/group state (with foul / ball-in-hand / AI folded in) */}
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full truncate"
+            style={{background:foulReason?'rgba(239,68,68,0.18)':`${curColor}22`,color:foulReason?'#ef4444':curColor}}>
+            {statusBadge}
           </span>
-          <div className="ml-auto flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-xs font-bold" style={{color:c1}}>{isAiMode?'You':' P1'} {p1OnEight?'🎱':''}</div>
-              <div className="text-xs" style={{color:'rgba(255,255,255,0.38)'}}>{tableOpen?'OPEN':`${p1Group==='solids'?'●':'◑'} ${p1Left}`}</div>
-            </div>
-            <div className="text-xs font-black" style={{color:'rgba(255,255,255,0.22)'}}>vs</div>
-            <div className="text-left">
-              <div className="text-xs font-bold" style={{color:c2}}>{isAiMode?'AI':'P2'} {p2OnEight?'🎱':''}</div>
-              <div className="text-xs" style={{color:'rgba(255,255,255,0.38)'}}>{tableOpen?'OPEN':`${p2Group==='solids'?'●':'◑'} ${p2Left}`}</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-3 pb-1 flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold px-3 py-1 rounded-full"
-            style={{background:`${curColor}22`,color:curColor}}>
-            {isAiMode?(turn===1?'Your Turn':'AI is playing...'):`P${turn}'s Turn`}
-            {!tableOpen&&(turn===1?p1Group:p2Group)?` · ${(turn===1?p1Group:p2Group)!.toUpperCase()}`:tableOpen?' · OPEN TABLE':''}
-          </span>
-          {curOnEight&&phase==='aiming'&&!foulReason&&(
-            <span className="text-xs font-bold px-2 py-0.5 rounded-full"
-              style={{background:'rgba(245,197,24,0.18)',color:'#f5c518'}}>
-              🎱 ON THE 8-BALL
+          {/* Compact scoreboard */}
+          <div className="ml-auto flex items-center gap-1.5 text-xs flex-shrink-0">
+            <span className="font-bold" style={{color:c1}}>
+              {isAiMode?'You':'P1'}{tableOpen?'':` ${p1Group==='solids'?'●':'◑'}${p1Left}`}{p1OnEight?'🎱':''}
             </span>
-          )}
+            <span style={{color:'rgba(255,255,255,0.22)'}}>·</span>
+            <span className="font-bold" style={{color:c2}}>
+              {isAiMode?'AI':'P2'}{tableOpen?'':` ${p2Group==='solids'?'●':'◑'}${p2Left}`}{p2OnEight?'🎱':''}
+            </span>
+          </div>
         </div>
-
-        {foulReason&&(
-          <div className="px-3 pb-2">
-            <span className="text-xs font-bold" style={{color:'#ef4444'}}>⚠ FOUL: {FOUL_TEXT[foulReason]}</span>
-          </div>
-        )}
-        {phase==='ballInHand'&&!foulReason&&!isAiTurn&&(
-          <div className="px-3 pb-2">
-            <span className="text-xs" style={{color:'#f5c518'}}>✋ Drag the cue ball{bihRestricted?' (kitchen only)':' anywhere'}, then tap PLACE</span>
-          </div>
-        )}
-        {isAiMode&&turn===2&&phase==='aiming'&&aiThinking&&(
-          <div className="px-3 pb-2">
-            <span className="text-xs" style={{color:'#a855f7'}}>🤖 AI is lining up...</span>
-          </div>
-        )}
       </div>
 
       {/* Canvas area */}

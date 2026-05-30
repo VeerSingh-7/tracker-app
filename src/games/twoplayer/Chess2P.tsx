@@ -832,7 +832,8 @@ export default function Chess2P({ mode, difficulty = 'medium', p1Color = 'red', 
   }
 
   return (
-    <div className="h-full flex flex-col relative overflow-hidden" style={{ background: 'var(--loft-bg)' }}>
+    <div className="h-full flex flex-col relative overflow-hidden" style={{ background: 'var(--loft-bg)',
+      paddingBottom: 'calc(var(--tab-bar-h) + env(safe-area-inset-bottom))' }}>
       {/* ── Header ── */}
       <div className="flex items-center gap-2 px-3 pb-2 flex-shrink-0"
         style={{ paddingTop: 'env(safe-area-inset-top)', background: 'var(--loft-bg2)' }}>
@@ -900,8 +901,11 @@ export default function Chess2P({ mode, difficulty = 'medium', p1Color = 'red', 
       </div>
 
       {/* ── Board ── */}
-      <div className="flex-1 flex items-center justify-center px-2 py-1">
-        <div className="w-full" style={{ maxWidth: 'min(100vw - 16px, calc(100vh - 260px))', aspectRatio: '1' }}>
+      <div className="flex-1 min-h-0 flex items-center justify-center px-2 py-1">
+        {/* Square board sized to fit width AND the remaining height above the tab bar.
+            ~184px reserves header + both captured strips + turn bar; tab-bar + safe insets
+            are already excluded (root padding-bottom + dvh). */}
+        <div className="w-full" style={{ maxWidth: 'min(calc(100vw - 16px), calc(100dvh - var(--tab-bar-h) - 184px - env(safe-area-inset-top) - env(safe-area-inset-bottom)))', aspectRatio: '1' }}>
           <div className="grid w-full h-full" style={{ gridTemplateColumns: 'repeat(8, 1fr)', gridTemplateRows: 'repeat(8, 1fr)' }}>
             {Array.from({ length: 64 }, (_, i) => renderSquare(i))}
           </div>
