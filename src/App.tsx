@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import TabBar from './components/TabBar'
 import Dashboard from './pages/Dashboard'
 import Workouts from './pages/Workouts'
-import Money from './pages/Money'
+import Projects from './pages/Projects'
 import Games from './pages/Games'
 import Settings from './pages/Settings'
 import LockScreen from './security/LockScreen'
@@ -53,7 +53,7 @@ export default function App() {
                     <Dashboard onTabChange={setTab} onSettings={() => setShowSettings(true)} />
                   )}
                   {tab === 'workouts' && <Workouts />}
-                  {tab === 'money'    && <Money />}
+                  {tab === 'projects' && <Projects />}
                   {tab === 'games'    && <Games />}
                 </motion.div>
               </AnimatePresence>

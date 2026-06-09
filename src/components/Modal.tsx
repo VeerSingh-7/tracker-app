@@ -37,7 +37,7 @@ export default function Modal({ isOpen, onClose, title, children, footer }: Prop
                 <X size={18} />
               </button>
             </div>
-            <div className="overflow-y-auto scroll-area flex-1 px-5 py-4">
+            <div className="overflow-y-auto scroll-area flex-1 px-5 py-4" style={{ touchAction: 'pan-y' }}>
               {children}
             </div>
             {footer && (

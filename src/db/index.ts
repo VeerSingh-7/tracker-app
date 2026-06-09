@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { Workout, SpendingEntry, IncomeEntry, GameScore, Exercise, PersonalRecord, UserProgress, UserProfile, Routine, TournamentRecord, RevSubject, RevTopic, RevCard, AppSecurity } from '../types'
+import type { Workout, SpendingEntry, IncomeEntry, GameScore, Exercise, PersonalRecord, UserProgress, UserProfile, Routine, TournamentRecord, RevSubject, RevTopic, RevCard, AppSecurity, Project, ProjectTransaction } from '../types'
 import { defaultExercises } from '../data/exercises'
 import { calcLevel } from '../workouts/utils'
 
@@ -20,13 +20,17 @@ interface TrackerDB {
   revCards: { key: string; value: RevCard; indexes: { 'by-topic': string; 'by-subject': string } }
   // App lock (single 'main' record holding salted password + recovery hashes)
   appSecurity: { key: string; value: AppSecurity }
+  // Projects hub (replaced the old Money page). The old spending/income stores
+  // are retained empty in the schema but are no longer read, written or seeded.
+  projects: { key: string; value: Project }
+  projectTransactions: { key: string; value: ProjectTransaction; indexes: { 'by-project': string } }
 }
 
 let dbPromise: Promise<IDBPDatabase<TrackerDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<TrackerDB>('tracker-app', 12, {
+    dbPromise = openDB<TrackerDB>('tracker-app', 13, {
       async upgrade(db, oldVersion, _nv, transaction) {
         if (oldVersion < 1) {
           db.createObjectStore('workouts', { keyPath: 'id' }).createIndex('by-date', 'date')
@@ -110,6 +114,28 @@ function getDB() {
             db.createObjectStore('appSecurity', { keyPath: 'id' })
           }
         }
+        if (oldVersion < 13) {
+          // Projects hub — additive stores only. The old spending/income stores
+          // are left in place (and empty); their data is intentionally discarded.
+          if (!db.objectStoreNames.contains('projects')) {
+            db.createObjectStore('projects', { keyPath: 'id' })
+          }
+          if (!db.objectStoreNames.contains('projectTransactions')) {
+            db.createObjectStore('projectTransactions', { keyPath: 'id' })
+              .createIndex('by-project', 'projectId')
+          }
+          // Seed a single starter project (runs once, on the v13 migration).
+          const projectStore = transaction.objectStore('projects')
+          await projectStore.put({
+            id: 'seed-ironside-mechanics',
+            name: 'Ironside Mechanics',
+            status: 'active',
+            link: 'https://ironside-mechanics.framer.website',
+            notes: 'Web design demo / portfolio piece',
+            colour: '#3b9eff',
+            createdAt: new Date().toISOString(),
+          })
+        }
       },
     })
   }
@@ -129,30 +155,37 @@ export async function deleteWorkout(id: string): Promise<void> {
   await (await getDB()).delete('workouts', id)
 }
 
-// Spending
-export async function getSpending(): Promise<SpendingEntry[]> {
+// Projects
+export async function getProjects(): Promise<Project[]> {
+  const all = await (await getDB()).getAll('projects')
+  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+export async function saveProject(p: Project): Promise<void> {
+  await (await getDB()).put('projects', p)
+}
+export async function deleteProject(id: string): Promise<void> {
   const db = await getDB()
-  const all = await db.getAllFromIndex('spending', 'by-date')
-  return all.reverse()
-}
-export async function saveSpending(e: SpendingEntry): Promise<void> {
-  await (await getDB()).put('spending', e)
-}
-export async function deleteSpending(id: string): Promise<void> {
-  await (await getDB()).delete('spending', id)
+  const tx = db.transaction(['projects', 'projectTransactions'], 'readwrite')
+  // Cascade: remove the project's transactions, then the project itself.
+  const txnIds = await tx.objectStore('projectTransactions').index('by-project').getAllKeys(id)
+  for (const key of txnIds) await tx.objectStore('projectTransactions').delete(key)
+  await tx.objectStore('projects').delete(id)
+  await tx.done
 }
 
-// Income
-export async function getIncome(): Promise<IncomeEntry[]> {
-  const db = await getDB()
-  const all = await db.getAllFromIndex('income', 'by-date')
-  return all.reverse()
+// Project Transactions
+export async function getProjectTransactions(projectId: string): Promise<ProjectTransaction[]> {
+  const all = await (await getDB()).getAllFromIndex('projectTransactions', 'by-project', projectId)
+  return all.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
 }
-export async function saveIncome(e: IncomeEntry): Promise<void> {
-  await (await getDB()).put('income', e)
+export async function getAllProjectTransactions(): Promise<ProjectTransaction[]> {
+  return (await getDB()).getAll('projectTransactions')
 }
-export async function deleteIncome(id: string): Promise<void> {
-  await (await getDB()).delete('income', id)
+export async function saveProjectTransaction(t: ProjectTransaction): Promise<void> {
+  await (await getDB()).put('projectTransactions', t)
+}
+export async function deleteProjectTransaction(id: string): Promise<void> {
+  await (await getDB()).delete('projectTransactions', id)
 }
 
 // Game Scores
@@ -268,8 +301,6 @@ export async function exportAllData() {
   const db = await getDB()
   return {
     workouts: await db.getAll('workouts'),
-    spending: await db.getAll('spending'),
-    income: await db.getAll('income'),
     gameScores: await db.getAll('gameScores'),
     exercises: await db.getAll('exercises'),
     personalRecords: await db.getAll('personalRecords'),
@@ -277,13 +308,13 @@ export async function exportAllData() {
     userProfile: await db.getAll('userProfile'),
     routines: await db.getAll('routines'),
     tournaments: await db.getAll('tournaments'),
+    projects: await db.getAll('projects'),
+    projectTransactions: await db.getAll('projectTransactions'),
   }
 }
 
 export async function importAllData(data: {
   workouts?: Workout[]
-  spending?: SpendingEntry[]
-  income?: IncomeEntry[]
   gameScores?: GameScore[]
   exercises?: Exercise[]
   personalRecords?: PersonalRecord[]
@@ -291,13 +322,13 @@ export async function importAllData(data: {
   userProfile?: UserProfile[]
   routines?: Routine[]
   tournaments?: TournamentRecord[]
+  projects?: Project[]
+  projectTransactions?: ProjectTransaction[]
 }) {
   const db = await getDB()
-  const stores = ['workouts', 'spending', 'income', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments'] as const
+  const stores = ['workouts', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments', 'projects', 'projectTransactions'] as const
   const tx = db.transaction(stores, 'readwrite')
   if (data.workouts) for (const w of data.workouts) await tx.objectStore('workouts').put(w)
-  if (data.spending) for (const s of data.spending) await tx.objectStore('spending').put(s)
-  if (data.income) for (const i of data.income) await tx.objectStore('income').put(i)
   if (data.gameScores) for (const g of data.gameScores) await tx.objectStore('gameScores').put(g)
   if (data.exercises) for (const e of data.exercises) await tx.objectStore('exercises').put(e)
   if (data.personalRecords) for (const p of data.personalRecords) await tx.objectStore('personalRecords').put(p)
@@ -305,22 +336,15 @@ export async function importAllData(data: {
   if (data.userProfile) for (const p of data.userProfile) await tx.objectStore('userProfile').put(p)
   if (data.routines) for (const r of data.routines) await tx.objectStore('routines').put(r)
   if (data.tournaments) for (const t of data.tournaments) await tx.objectStore('tournaments').put(t)
+  if (data.projects) for (const p of data.projects) await tx.objectStore('projects').put(p)
+  if (data.projectTransactions) for (const t of data.projectTransactions) await tx.objectStore('projectTransactions').put(t)
   await tx.done
 }
 
 export async function clearAllData() {
   const db = await getDB()
-  const stores = ['workouts', 'spending', 'income', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments'] as const
+  const stores = ['workouts', 'gameScores', 'exercises', 'personalRecords', 'userProgress', 'userProfile', 'routines', 'tournaments', 'projects', 'projectTransactions'] as const
   const tx = db.transaction(stores, 'readwrite')
-  await tx.objectStore('workouts').clear()
-  await tx.objectStore('spending').clear()
-  await tx.objectStore('income').clear()
-  await tx.objectStore('gameScores').clear()
-  await tx.objectStore('exercises').clear()
-  await tx.objectStore('personalRecords').clear()
-  await tx.objectStore('userProgress').clear()
-  await tx.objectStore('userProfile').clear()
-  await tx.objectStore('routines').clear()
-  await tx.objectStore('tournaments').clear()
+  for (const s of stores) await tx.objectStore(s).clear()
   await tx.done
 }

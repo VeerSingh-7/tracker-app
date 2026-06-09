@@ -213,5 +213,28 @@ export interface AppSecurity {
   updatedAt: string
 }
 
-export type Tab = 'dashboard' | 'workouts' | 'money' | 'games'
+// ─── Projects (project-tracking hub) ────────────────────────────────────────
+export type ProjectStatus = 'idea' | 'active' | 'paused' | 'done'
+
+export interface Project {
+  id: string
+  name: string
+  status: ProjectStatus
+  link: string
+  notes: string
+  colour: string         // hex accent colour
+  createdAt: string
+}
+
+export interface ProjectTransaction {
+  id: string
+  projectId: string
+  type: 'in' | 'out'
+  amount: number
+  label: string
+  date: string
+  createdAt: string
+}
+
+export type Tab = 'dashboard' | 'workouts' | 'projects' | 'games'
 export type WorkoutSubTab = 'tracker' | 'library' | 'progress' | 'bodygraph' | 'achievements' | 'quest' | 'history' | 'shop'

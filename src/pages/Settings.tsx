@@ -189,7 +189,7 @@ export default function Settings({ onBack }: Props) {
                 <p className="font-bold" style={{ color: '#f87171' }}>Are you sure?</p>
               </div>
               <p className="text-sm mb-4 leading-relaxed" style={{ color: 'var(--loft-muted)' }}>
-                This will permanently delete all workouts, spending, income, game scores, and exercise data. This cannot be undone.
+                This will permanently delete all workouts, projects, game scores, and exercise data. This cannot be undone.
               </p>
               <div className="flex gap-3">
                 <button

@@ -1,10 +1,10 @@
-import { LayoutDashboard, Dumbbell, Wallet, Gamepad2 } from 'lucide-react'
+import { LayoutDashboard, Dumbbell, Briefcase, Gamepad2 } from 'lucide-react'
 import type { Tab } from '../types'
 
 const tabs: { id: Tab; label: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string; style?: React.CSSProperties }> }[] = [
   { id: 'dashboard', label: 'Home',     icon: LayoutDashboard },
   { id: 'workouts',  label: 'Workouts', icon: Dumbbell },
-  { id: 'money',     label: 'Money',    icon: Wallet },
+  { id: 'projects', label: 'Projects', icon: Briefcase },
   { id: 'games',     label: 'Games',    icon: Gamepad2 },
 ]
 

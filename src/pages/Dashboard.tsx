@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Settings2, Dumbbell, Wallet, Gamepad2, Zap, TrendingUp, ChevronRight } from 'lucide-react'
-import { format, startOfMonth, startOfWeek } from 'date-fns'
+import { Settings2, Dumbbell, Briefcase, Gamepad2, Zap, TrendingUp, ChevronRight } from 'lucide-react'
+import { format, startOfWeek } from 'date-fns'
 import Card from '../components/Card'
-import { getWorkouts, getSpending, getIncome, getAllGameScores, getUserProgress } from '../db'
-import { formatCurrency } from '../utils'
+import { getWorkouts, getProjects, getAllProjectTransactions, getAllGameScores, getUserProgress } from '../db'
+import { formatSigned } from '../utils'
 import { calcLevel } from '../workouts/utils'
 import type { Tab } from '../types'
 
@@ -23,7 +23,8 @@ function getGreeting(): string {
 export default function Dashboard({ onTabChange, onSettings }: Props) {
   const [weekWorkouts, setWeekWorkouts] = useState(0)
   const [lastWorkout, setLastWorkout]   = useState<string | null>(null)
-  const [monthNet, setMonthNet]         = useState<number | null>(null)
+  const [projectPL, setProjectPL]       = useState<number | null>(null)
+  const [activeProjects, setActiveProjects] = useState(0)
   const [gamesPlayed, setGamesPlayed]   = useState(0)
   const [userLevel, setUserLevel]       = useState(1)
   const [totalXP, setTotalXP]           = useState(0)
@@ -31,7 +32,6 @@ export default function Dashboard({ onTabChange, onSettings }: Props) {
   const [coins, setCoins]               = useState(0)
 
   useEffect(() => {
-    const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
     const weekStart  = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
 
     getWorkouts().then(workouts => {
@@ -39,10 +39,10 @@ export default function Dashboard({ onTabChange, onSettings }: Props) {
       setWeekWorkouts(workouts.filter(w => w.date >= weekStart).length)
     })
 
-    Promise.all([getSpending(), getIncome()]).then(([spending, income]) => {
-      const monthSpend  = spending.filter(s => s.date >= monthStart).reduce((sum, s) => sum + s.amount, 0)
-      const monthIncome = income.filter(i => i.date >= monthStart).reduce((sum, i) => sum + i.amount, 0)
-      setMonthNet(monthIncome - monthSpend)
+    Promise.all([getProjects(), getAllProjectTransactions()]).then(([projects, txns]) => {
+      const pl = txns.reduce((sum, t) => sum + (t.type === 'in' ? t.amount : -t.amount), 0)
+      setProjectPL(pl)
+      setActiveProjects(projects.filter(p => p.status === 'active').length)
     })
 
     getAllGameScores().then(scores => setGamesPlayed(scores.length))
@@ -56,7 +56,7 @@ export default function Dashboard({ onTabChange, onSettings }: Props) {
     })
   }, [])
 
-  const netPositive = monthNet !== null && monthNet >= 0
+  const plPositive = projectPL !== null && projectPL >= 0
 
   const summaryCards = [
     {
@@ -74,14 +74,12 @@ export default function Dashboard({ onTabChange, onSettings }: Props) {
         : lastWorkout ? 'last session' : 'Log a workout!',
     },
     {
-      tab: 'money' as Tab,
-      icon: Wallet,
-      accent: netPositive ? '#34d399' : '#f87171',
-      label: 'Money',
-      value: monthNet !== null
-        ? (monthNet >= 0 ? `+${formatCurrency(monthNet)}` : formatCurrency(monthNet))
-        : '—',
-      sub: 'net this month',
+      tab: 'projects' as Tab,
+      icon: Briefcase,
+      accent: plPositive ? '#34d399' : '#f87171',
+      label: 'Projects',
+      value: projectPL !== null ? formatSigned(projectPL) : '—',
+      sub: activeProjects > 0 ? `${activeProjects} active` : 'profit / loss',
     },
     {
       tab: 'games' as Tab,
@@ -143,14 +141,14 @@ export default function Dashboard({ onTabChange, onSettings }: Props) {
           </div>
           <div className="text-center py-3 px-2">
             <div className="flex items-center justify-center gap-1 mb-0.5">
-              <TrendingUp size={11} style={{ color: netPositive ? '#34d399' : '#f87171' }} />
-              <p className="text-lg font-black" style={{ color: netPositive ? '#34d399' : '#f87171' }}>
-                {monthNet !== null
-                  ? (monthNet >= 0 ? `+£${Math.round(monthNet)}` : `-£${Math.round(Math.abs(monthNet))}`)
+              <TrendingUp size={11} style={{ color: plPositive ? '#34d399' : '#f87171' }} />
+              <p className="text-lg font-black" style={{ color: plPositive ? '#34d399' : '#f87171' }}>
+                {projectPL !== null
+                  ? (projectPL >= 0 ? `+£${Math.round(projectPL)}` : `-£${Math.round(Math.abs(projectPL))}`)
                   : '—'}
               </p>
             </div>
-            <p className="text-[10px]" style={{ color: 'var(--loft-muted)' }}>net/month</p>
+            <p className="text-[10px]" style={{ color: 'var(--loft-muted)' }}>projects P/L</p>
           </div>
           <div className="text-center py-3 px-2">
             <div className="flex items-center justify-center gap-1 mb-0.5">
