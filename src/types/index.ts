@@ -197,5 +197,5 @@ export interface RevCard {
   timesWrong: number
 }
 
-export type Tab = 'dashboard' | 'workouts' | 'money' | 'games' | 'revision'
+export type Tab = 'dashboard' | 'workouts' | 'money' | 'games'
 export type WorkoutSubTab = 'tracker' | 'library' | 'progress' | 'bodygraph' | 'achievements' | 'quest' | 'history' | 'shop'
