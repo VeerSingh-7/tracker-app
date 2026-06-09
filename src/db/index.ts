@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase } from 'idb'
-import type { Workout, SpendingEntry, IncomeEntry, GameScore, Exercise, PersonalRecord, UserProgress, UserProfile, Routine, TournamentRecord, RevSubject, RevTopic, RevCard } from '../types'
+import type { Workout, SpendingEntry, IncomeEntry, GameScore, Exercise, PersonalRecord, UserProgress, UserProfile, Routine, TournamentRecord, RevSubject, RevTopic, RevCard, AppSecurity } from '../types'
 import { defaultExercises } from '../data/exercises'
 import { calcLevel } from '../workouts/utils'
 
@@ -18,13 +18,15 @@ interface TrackerDB {
   revSubjects: { key: string; value: RevSubject }
   revTopics: { key: string; value: RevTopic; indexes: { 'by-subject': string } }
   revCards: { key: string; value: RevCard; indexes: { 'by-topic': string; 'by-subject': string } }
+  // App lock (single 'main' record holding salted password + recovery hashes)
+  appSecurity: { key: string; value: AppSecurity }
 }
 
 let dbPromise: Promise<IDBPDatabase<TrackerDB>> | null = null
 
 function getDB() {
   if (!dbPromise) {
-    dbPromise = openDB<TrackerDB>('tracker-app', 11, {
+    dbPromise = openDB<TrackerDB>('tracker-app', 12, {
       async upgrade(db, oldVersion, _nv, transaction) {
         if (oldVersion < 1) {
           db.createObjectStore('workouts', { keyPath: 'id' }).createIndex('by-date', 'date')
@@ -100,6 +102,12 @@ function getDB() {
             const cardStore = db.createObjectStore('revCards', { keyPath: 'id' })
             cardStore.createIndex('by-topic', 'topicId')
             cardStore.createIndex('by-subject', 'subjectId')
+          }
+        }
+        if (oldVersion < 12) {
+          // App lock — additive store only; existing stores untouched.
+          if (!db.objectStoreNames.contains('appSecurity')) {
+            db.createObjectStore('appSecurity', { keyPath: 'id' })
           }
         }
       },
@@ -244,6 +252,15 @@ export async function saveTournament(t: TournamentRecord): Promise<void> {
 }
 export async function getAllTournaments(): Promise<TournamentRecord[]> {
   return (await getDB()).getAll('tournaments')
+}
+
+// App Security (password lock). Stored as a single 'main' record; never exported,
+// imported or cleared so the lock survives data backups/restores/wipes.
+export async function getAppSecurity(): Promise<AppSecurity | null> {
+  return (await (await getDB()).get('appSecurity', 'main')) ?? null
+}
+export async function saveAppSecurity(s: AppSecurity): Promise<void> {
+  await (await getDB()).put('appSecurity', s)
 }
 
 // Export / Import / Clear

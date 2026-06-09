@@ -197,5 +197,17 @@ export interface RevCard {
   timesWrong: number
 }
 
+// ─── App lock (convenience privacy — password + recovery question) ──────────
+export interface AppSecurity {
+  id: string               // always 'main'
+  salt: string             // random hex salt for the password hash
+  passwordHash: string     // SHA-256 hex of `${salt}:${password}`
+  recoveryQuestion: string
+  recoverySalt: string     // random hex salt for the recovery-answer hash
+  recoveryHash: string     // SHA-256 hex of `${recoverySalt}:${normalisedAnswer}`
+  createdAt: string
+  updatedAt: string
+}
+
 export type Tab = 'dashboard' | 'workouts' | 'money' | 'games'
 export type WorkoutSubTab = 'tracker' | 'library' | 'progress' | 'bodygraph' | 'achievements' | 'quest' | 'history' | 'shop'

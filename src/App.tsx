@@ -6,6 +6,7 @@ import Workouts from './pages/Workouts'
 import Money from './pages/Money'
 import Games from './pages/Games'
 import Settings from './pages/Settings'
+import LockScreen from './security/LockScreen'
 import type { Tab } from './types'
 
 const pageVariants = {
@@ -15,36 +16,52 @@ const pageVariants = {
 }
 
 export default function App() {
+  const [unlocked, setUnlocked] = useState(false)
   const [tab, setTab] = useState<Tab>('dashboard')
   const [showSettings, setShowSettings] = useState(false)
 
   return (
-    <div className="relative h-full" style={{ background: 'var(--loft-bg)', color: 'var(--loft-text)' }}>
-      {showSettings ? (
-        <Settings onBack={() => setShowSettings(false)} />
+    <AnimatePresence mode="wait">
+      {!unlocked ? (
+        <motion.div key="lock" exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+          <LockScreen onUnlock={() => setUnlocked(true)} />
+        </motion.div>
       ) : (
-        <>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={tab}
-              variants={pageVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              transition={{ duration: 0.14, ease: 'easeOut' }}
-              className="h-full"
-            >
-              {tab === 'dashboard' && (
-                <Dashboard onTabChange={setTab} onSettings={() => setShowSettings(true)} />
-              )}
-              {tab === 'workouts' && <Workouts />}
-              {tab === 'money'    && <Money />}
-              {tab === 'games'    && <Games />}
-            </motion.div>
-          </AnimatePresence>
-          <TabBar activeTab={tab} onTabChange={setTab} />
-        </>
+        <motion.div
+          key="app"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
+          className="relative h-full"
+          style={{ background: 'var(--loft-bg)', color: 'var(--loft-text)' }}
+        >
+          {showSettings ? (
+            <Settings onBack={() => setShowSettings(false)} />
+          ) : (
+            <>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={tab}
+                  variants={pageVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ duration: 0.14, ease: 'easeOut' }}
+                  className="h-full"
+                >
+                  {tab === 'dashboard' && (
+                    <Dashboard onTabChange={setTab} onSettings={() => setShowSettings(true)} />
+                  )}
+                  {tab === 'workouts' && <Workouts />}
+                  {tab === 'money'    && <Money />}
+                  {tab === 'games'    && <Games />}
+                </motion.div>
+              </AnimatePresence>
+              <TabBar activeTab={tab} onTabChange={setTab} />
+            </>
+          )}
+        </motion.div>
       )}
-    </div>
+    </AnimatePresence>
   )
 }

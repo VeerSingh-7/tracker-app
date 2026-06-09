@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { ArrowLeft, Download, Upload, Trash2, AlertTriangle, Shield } from 'lucide-react'
+import { ArrowLeft, Download, Upload, Trash2, AlertTriangle, Shield, KeyRound, HelpCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { exportAllData, importAllData, clearAllData } from '../db'
+import SecurityModal, { type SecurityAction } from '../security/SecurityModal'
 
 interface Props {
   onBack: () => void
@@ -10,6 +11,7 @@ interface Props {
 export default function Settings({ onBack }: Props) {
   const [confirmClear, setConfirmClear] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [securityModal, setSecurityModal] = useState<SecurityAction | null>(null)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -123,6 +125,35 @@ export default function Settings({ onBack }: Props) {
           </button>
         ))}
 
+        {/* Security */}
+        <div className="pt-4">
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--loft-faint)' }}>
+            Security
+          </p>
+          {[
+            { icon: KeyRound, label: 'Change Password', sub: 'Requires your current password', action: 'password' as SecurityAction },
+            { icon: HelpCircle, label: 'Change Recovery Question', sub: 'Requires your current password', action: 'recovery' as SecurityAction },
+          ].map(({ icon: Icon, label, sub, action }) => (
+            <button
+              key={label}
+              onClick={() => setSecurityModal(action)}
+              className="w-full rounded-2xl border p-4 flex items-center gap-4 transition-all duration-150 text-left mb-3"
+              style={{ background: 'var(--loft-card)', borderColor: 'var(--loft-border)' }}
+            >
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(59,158,255,0.10)', border: '1px solid rgba(59,158,255,0.18)' }}
+              >
+                <Icon size={20} style={{ color: 'var(--loft-accent)' }} />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold" style={{ color: 'var(--loft-text)' }}>{label}</p>
+                <p className="text-sm" style={{ color: 'var(--loft-muted)' }}>{sub}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+
         {/* Danger zone */}
         <div className="pt-4">
           <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: '#f87171' }}>
@@ -182,6 +213,17 @@ export default function Settings({ onBack }: Props) {
       </div>
 
       <input type="file" id="import-input" accept=".json" className="hidden" onChange={handleImport} />
+
+      {securityModal && (
+        <SecurityModal
+          action={securityModal}
+          onClose={() => setSecurityModal(null)}
+          onDone={(msg) => {
+            setSecurityModal(null)
+            showToast(msg)
+          }}
+        />
+      )}
 
       {/* Toast */}
       <AnimatePresence>
