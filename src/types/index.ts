@@ -197,14 +197,18 @@ export interface RevCard {
   timesWrong: number
 }
 
-// ─── App lock (convenience privacy — password + recovery question) ──────────
+// ─── App lock (convenience privacy — PIN or password + recovery question) ───
 export interface AppSecurity {
   id: string               // always 'main'
-  salt: string             // random hex salt for the password hash
-  passwordHash: string     // SHA-256 hex of `${salt}:${password}`
+  salt: string             // random hex salt for the credential hash
+  passwordHash: string     // SHA-256 hex of `${salt}:${credential}` (PIN or password)
   recoveryQuestion: string
   recoverySalt: string     // random hex salt for the recovery-answer hash
   recoveryHash: string     // SHA-256 hex of `${recoverySalt}:${normalisedAnswer}`
+  // Lock type — optional for backwards compatibility. A record written before this
+  // field existed is treated as 'password'.
+  lockType?: 'pin' | 'password'
+  pinLength?: number       // only present when lockType === 'pin'
   createdAt: string
   updatedAt: string
 }

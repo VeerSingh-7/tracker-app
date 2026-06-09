@@ -131,8 +131,8 @@ export default function Settings({ onBack }: Props) {
             Security
           </p>
           {[
-            { icon: KeyRound, label: 'Change Password', sub: 'Requires your current password', action: 'password' as SecurityAction },
-            { icon: HelpCircle, label: 'Change Recovery Question', sub: 'Requires your current password', action: 'recovery' as SecurityAction },
+            { icon: KeyRound, label: 'Change Passcode', sub: 'Switch between PIN and password', action: 'passcode' as SecurityAction },
+            { icon: HelpCircle, label: 'Change Recovery Question', sub: 'Requires your current passcode', action: 'recovery' as SecurityAction },
           ].map(({ icon: Icon, label, sub, action }) => (
             <button
               key={label}

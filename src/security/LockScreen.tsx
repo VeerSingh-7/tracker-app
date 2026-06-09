@@ -2,18 +2,24 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Lock, ShieldCheck, KeyRound, ArrowLeft } from 'lucide-react'
 import PasswordField from './PasswordField'
+import PinPad from './PinPad'
 import QuestionPicker from './QuestionPicker'
+import CredentialEntry from './CredentialEntry'
+import { LockTypeChooser, PinLengthChooser } from './LockChoosers'
 import {
   RECOVERY_QUESTIONS,
-  hasPasswordSet,
+  getLockInfo,
   verifyPassword,
   verifyRecoveryAnswer,
   setupSecurity,
-  changePassword,
+  changeCredential,
   getRecoveryQuestion,
+  type LockType,
 } from './secure'
 
 type Mode = 'loading' | 'setup' | 'login' | 'recovery' | 'reset'
+// Sub-steps for the setup & reset credential flows.
+type Step = 'type' | 'length' | 'credential' | 'recovery'
 
 interface Props {
   onUnlock: () => void
@@ -23,8 +29,18 @@ const textInputStyle = { background: 'var(--loft-card2)', color: 'var(--loft-tex
 
 export default function LockScreen({ onUnlock }: Props) {
   const [mode, setMode] = useState<Mode>('loading')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
+  const [step, setStep] = useState<Step>('type')
+
+  // Chosen during setup/reset
+  const [lockType, setLockType] = useState<LockType>('password')
+  const [pinLength, setPinLength] = useState(4)
+  const [credential, setCredential] = useState('') // validated new credential awaiting save
+
+  // Stored credential type, for the login screen
+  const [loginType, setLoginType] = useState<LockType>('password')
+  const [loginPinLength, setLoginPinLength] = useState(4)
+
+  const [value, setValue] = useState('') // login input
   const [question, setQuestion] = useState<string>(RECOVERY_QUESTIONS[0])
   const [answer, setAnswer] = useState('')
   const [recoveryQuestion, setRecoveryQuestion] = useState('')
@@ -32,56 +48,74 @@ export default function LockScreen({ onUnlock }: Props) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    hasPasswordSet().then((exists) => setMode(exists ? 'login' : 'setup'))
+    getLockInfo().then((info) => {
+      if (!info) {
+        setMode('setup')
+        setStep('type')
+      } else {
+        setLoginType(info.type)
+        setLoginPinLength(info.pinLength)
+        setMode('login')
+      }
+    })
   }, [])
 
-  function resetFields() {
-    setPassword('')
-    setConfirm('')
-    setAnswer('')
-    setError('')
-  }
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  async function handleSetup() {
+  // ── Login ───────────────────────────────────────────────────────────────
+  async function handleLogin(input?: string) {
     if (busy) return
-    setError('')
-    if (password.length < 4) return setError('Password must be at least 4 characters')
-    if (password !== confirm) return setError("Passwords don't match")
-    if (!question.trim()) return setError('Please choose or write a recovery question')
-    if (!answer.trim()) return setError('Please enter a recovery answer')
-    setBusy(true)
-    try {
-      await setupSecurity(password, question.trim(), answer)
-      onUnlock()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleLogin() {
-    if (busy) return
+    const candidate = input ?? value
     setError('')
     setBusy(true)
     try {
-      if (await verifyPassword(password)) {
+      if (await verifyPassword(candidate)) {
         onUnlock()
       } else {
-        setError('Incorrect password')
-        setPassword('')
+        setError(loginType === 'pin' ? 'Incorrect PIN' : 'Incorrect password')
+        setValue('')
       }
     } finally {
       setBusy(false)
     }
   }
 
+  // ── Setup ───────────────────────────────────────────────────────────────
+  function chooseSetupType(t: LockType) {
+    setLockType(t)
+    setError('')
+    setStep(t === 'pin' ? 'length' : 'credential')
+  }
+  function chooseLength(n: number) {
+    setPinLength(n)
+    setStep('credential')
+  }
+  function onSetupCredential(v: string) {
+    setCredential(v)
+    setError('')
+    setStep('recovery')
+  }
+  async function handleFinishSetup() {
+    if (busy) return
+    setError('')
+    if (!question.trim()) return setError('Please choose or write a recovery question')
+    if (!answer.trim()) return setError('Please enter a recovery answer')
+    setBusy(true)
+    try {
+      await setupSecurity(credential, question.trim(), answer, lockType, lockType === 'pin' ? pinLength : undefined)
+      onUnlock()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // ── Recovery → reset ──────────────────────────────────────────────────────
   async function openRecovery() {
-    resetFields()
+    setValue('')
+    setAnswer('')
+    setError('')
     const q = await getRecoveryQuestion()
     setRecoveryQuestion(q ?? '')
     setMode('recovery')
   }
-
   async function handleRecoveryCheck() {
     if (busy) return
     setError('')
@@ -89,8 +123,9 @@ export default function LockScreen({ onUnlock }: Props) {
     setBusy(true)
     try {
       if (await verifyRecoveryAnswer(answer)) {
-        resetFields()
+        setError('')
         setMode('reset')
+        setStep('type')
       } else {
         setError('Incorrect answer')
       }
@@ -98,15 +133,16 @@ export default function LockScreen({ onUnlock }: Props) {
       setBusy(false)
     }
   }
-
-  async function handleReset() {
-    if (busy) return
+  function chooseResetType(t: LockType) {
+    setLockType(t)
     setError('')
-    if (password.length < 4) return setError('Password must be at least 4 characters')
-    if (password !== confirm) return setError("Passwords don't match")
+    setStep(t === 'pin' ? 'length' : 'credential')
+  }
+  async function onResetCredential(v: string) {
+    if (busy) return
     setBusy(true)
     try {
-      await changePassword(password)
+      await changeCredential(v, lockType, lockType === 'pin' ? pinLength : undefined)
       onUnlock()
     } finally {
       setBusy(false)
@@ -114,9 +150,15 @@ export default function LockScreen({ onUnlock }: Props) {
   }
 
   // ── Shared shell ──────────────────────────────────────────────────────────
-  const shell = (icon: React.ReactNode, title: string, subtitle: string, body: React.ReactNode) => (
+  const shell = (
+    icon: React.ReactNode,
+    title: string,
+    subtitle: string,
+    body: React.ReactNode,
+    onBack?: () => void,
+  ) => (
     <div
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center px-6"
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center px-6 overflow-y-auto"
       style={{
         background: 'var(--loft-bg)',
         paddingTop: 'env(safe-area-inset-top)',
@@ -127,9 +169,18 @@ export default function LockScreen({ onUnlock }: Props) {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="w-full max-w-sm rounded-3xl border p-6"
+        className="w-full max-w-sm rounded-3xl border p-6 my-auto"
         style={{ background: 'var(--loft-card)', borderColor: 'var(--loft-border2)', boxShadow: 'var(--loft-card-shadow)' }}
       >
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-sm font-medium mb-4"
+            style={{ color: 'var(--loft-muted)' }}
+          >
+            <ArrowLeft size={15} /> Back
+          </button>
+        )}
         <div className="flex flex-col items-center text-center mb-6">
           <div
             className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
@@ -176,19 +227,45 @@ export default function LockScreen({ onUnlock }: Props) {
   }
 
   if (mode === 'setup') {
+    if (step === 'type') {
+      return shell(
+        <ShieldCheck size={30} style={{ color: 'var(--loft-accent)' }} />,
+        'Set up your lock',
+        'Choose how you want to unlock Tracker.',
+        <LockTypeChooser onChoose={chooseSetupType} />,
+      )
+    }
+    if (step === 'length') {
+      return shell(
+        <ShieldCheck size={30} style={{ color: 'var(--loft-accent)' }} />,
+        'PIN length',
+        'How many digits would you like?',
+        <PinLengthChooser onChoose={chooseLength} />,
+        () => setStep('type'),
+      )
+    }
+    if (step === 'credential') {
+      return shell(
+        <ShieldCheck size={30} style={{ color: 'var(--loft-accent)' }} />,
+        lockType === 'pin' ? 'Choose a PIN' : 'Choose a password',
+        'You’ll set a recovery question next.',
+        <CredentialEntry
+          key={`setup-${lockType}-${pinLength}`}
+          lockType={lockType}
+          pinLength={pinLength}
+          ctaLabel="Continue"
+          busy={busy}
+          onValid={onSetupCredential}
+        />,
+        () => setStep(lockType === 'pin' ? 'length' : 'type'),
+      )
+    }
+    // step === 'recovery'
     return shell(
       <ShieldCheck size={30} style={{ color: 'var(--loft-accent)' }} />,
-      'Set up your password',
-      'Protect Tracker on this device.',
+      'Recovery question',
+      'Used if you ever forget your lock.',
       <div className="space-y-4">
-        <div>
-          {fieldLabel('Password')}
-          <PasswordField value={password} onChange={setPassword} placeholder="Choose a password" autoFocus />
-        </div>
-        <div>
-          {fieldLabel('Confirm password')}
-          <PasswordField value={confirm} onChange={setConfirm} placeholder="Re-enter password" />
-        </div>
         <div>
           {fieldLabel('Recovery question')}
           <QuestionPicker onChange={setQuestion} />
@@ -207,27 +284,43 @@ export default function LockScreen({ onUnlock }: Props) {
           />
         </div>
         <p className="text-xs leading-relaxed" style={{ color: 'var(--loft-faint)' }}>
-          This keeps the app private on shared devices. It's not bank-level security. Your password and answer are
+          This keeps the app private on shared devices. It's not bank-level security. Your passcode and answer are
           hashed — if you forget both, they can't be recovered, only reset.
         </p>
-        <div className="pt-1">{primaryBtn(busy ? 'Saving…' : 'Save & unlock', handleSetup)}</div>
+        <div className="pt-1">{primaryBtn(busy ? 'Saving…' : 'Save & unlock', handleFinishSetup)}</div>
       </div>,
+      () => setStep('credential'),
     )
   }
 
   if (mode === 'login') {
+    if (loginType === 'pin') {
+      return shell(
+        <Lock size={28} style={{ color: 'var(--loft-accent)' }} />,
+        'Tracker',
+        'Enter your PIN to unlock.',
+        <div className="space-y-5">
+          <PinPad
+            value={value}
+            length={loginPinLength}
+            onChange={setValue}
+            onComplete={(v) => handleLogin(v)}
+            disabled={busy}
+          />
+          <button onClick={openRecovery} className="w-full text-sm font-medium" style={{ color: 'var(--loft-accent)' }}>
+            Forgot PIN?
+          </button>
+        </div>,
+      )
+    }
     return shell(
       <Lock size={28} style={{ color: 'var(--loft-accent)' }} />,
       'Tracker',
       'Enter your password to unlock.',
       <div className="space-y-4">
-        <PasswordField value={password} onChange={setPassword} placeholder="Password" autoFocus onEnter={handleLogin} />
-        {primaryBtn(busy ? 'Unlocking…' : 'Unlock', handleLogin)}
-        <button
-          onClick={openRecovery}
-          className="w-full text-sm font-medium pt-1"
-          style={{ color: 'var(--loft-accent)' }}
-        >
+        <PasswordField value={value} onChange={setValue} placeholder="Password" autoFocus onEnter={() => handleLogin()} />
+        {primaryBtn(busy ? 'Unlocking…' : 'Unlock', () => handleLogin())}
+        <button onClick={openRecovery} className="w-full text-sm font-medium pt-1" style={{ color: 'var(--loft-accent)' }}>
           Forgot password?
         </button>
       </div>,
@@ -257,7 +350,9 @@ export default function LockScreen({ onUnlock }: Props) {
         {primaryBtn(busy ? 'Checking…' : 'Continue', handleRecoveryCheck)}
         <button
           onClick={() => {
-            resetFields()
+            setValue('')
+            setAnswer('')
+            setError('')
             setMode('login')
           }}
           className="w-full flex items-center justify-center gap-1.5 text-sm font-medium pt-1"
@@ -270,20 +365,36 @@ export default function LockScreen({ onUnlock }: Props) {
   }
 
   // mode === 'reset'
+  if (step === 'type') {
+    return shell(
+      <KeyRound size={28} style={{ color: 'var(--loft-accent)' }} />,
+      'Set a new lock',
+      'Your recovery answer was correct. Choose a lock type.',
+      <LockTypeChooser onChoose={chooseResetType} />,
+    )
+  }
+  if (step === 'length') {
+    return shell(
+      <KeyRound size={28} style={{ color: 'var(--loft-accent)' }} />,
+      'PIN length',
+      'How many digits would you like?',
+      <PinLengthChooser onChoose={chooseLength} />,
+      () => setStep('type'),
+    )
+  }
+  // step === 'credential'
   return shell(
     <KeyRound size={28} style={{ color: 'var(--loft-accent)' }} />,
-    'Set a new password',
-    'Your recovery answer was correct.',
-    <div className="space-y-4">
-      <div>
-        {fieldLabel('New password')}
-        <PasswordField value={password} onChange={setPassword} placeholder="New password" autoFocus />
-      </div>
-      <div>
-        {fieldLabel('Confirm password')}
-        <PasswordField value={confirm} onChange={setConfirm} placeholder="Re-enter password" onEnter={handleReset} />
-      </div>
-      {primaryBtn(busy ? 'Saving…' : 'Save & unlock', handleReset)}
-    </div>,
+    lockType === 'pin' ? 'Set a new PIN' : 'Set a new password',
+    'Almost done.',
+    <CredentialEntry
+      key={`reset-${lockType}-${pinLength}`}
+      lockType={lockType}
+      pinLength={pinLength}
+      ctaLabel={busy ? 'Saving…' : 'Save & unlock'}
+      busy={busy}
+      onValid={onResetCredential}
+    />,
+    () => setStep(lockType === 'pin' ? 'length' : 'type'),
   )
 }
